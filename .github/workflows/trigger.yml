@@ -59,8 +59,8 @@ jobs:
       - name: Trigger Workflow in another Repository
         run: |
           # Set the required variables
-          repo_owner="${{ inputs.gh_org_name }} 
-          repo_name=${{ matrix.target_repo }}
+          repo_owner="${{ inputs.gh_org_name }}"
+          repo_name="${{ matrix.target_repo }}"
           event_type="trigger-workflow" 
   
           curl -L \
