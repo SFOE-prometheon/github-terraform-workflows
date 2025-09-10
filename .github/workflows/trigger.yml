@@ -46,6 +46,7 @@ jobs:
       matrix:
         target_repo: ${{ fromJson(needs.get-repositories.outputs.repos) }}
     steps:
+      
       - name: Generate token for GH App
         id: generate-token
         uses: actions/create-github-app-token@v1
@@ -53,6 +54,7 @@ jobs:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.target_repo }}
+          owner: ${{ inputs.gh_org_name }}
 
       - name: Trigger Workflow in another Repository
         run: |
