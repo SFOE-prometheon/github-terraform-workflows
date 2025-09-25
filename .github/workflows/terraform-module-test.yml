@@ -1,4 +1,4 @@
-name: TERRAFORM MODULE TEST
+name: TERRAFORM MODULE MATRIX
 
 on:
   workflow_call:
@@ -8,53 +8,28 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
-      use_opentofu:
-        description: 'Use OpenTofu instead of Terraform to format the code'
-        default: false
-        required: false
-        type: boolean
-      terraform_version:
-        description: 'Terraform version used for formatting and linting'
+      tofu_version:
+        description: 'OpenTofu version used inside GitHub Actions'
         default: 'latest'
         required: false
         type: string
-      terraform_requirements_file:
-        description: 'File where terraform requirements are defined'
-        default: 'main.tf'
+      tofu_working_directory:
+        description: 'A relative path starting with "." that OpenTofu will execute within (e.g. "./infrastructure")'
+        default: '.'
         required: false
         type: string
-      terraform_modules_auth:
-        description: 'Authentication method for private modules (none|github-app). If set to "github-app", the secrets "TERRAFORM_MODULES_APP_ID" and "TERRAFORM_MODULES_APP_PRIVATE_KEY" are required.'
-        default: 'none'
+      enable_terraform_docs:
+        description: 'Enable automatic generation of documentation with terraform-docs'
+        default: true
         required: false
-        type: string
-      terraform_modules_github_owner:
-        description: 'GitHub owner/organization name for private modules (required when terraform_modules_auth is github-app)'
-        default: ''
-        required: false
-        type: string
-      terraform_registry_hostname:
-        description: 'Hostname for terraform registry used to download providers'
-        default: 'registry.terraform.io'
-        required: false
-        type: string
-      aws_default_region:
-        description: 'Default AWS region to use for testing'
-        default: 'eu-central-1'
-        required: false
-        type: string
-      aws_oidc_role_arn:
-        description: 'AWS OIDC role ARN to assume for testing'
-        default: ''
-        required: false
-        type: string
-      tflint_repo:
+        type: boolean
+      tflint_repo_name:
         description: 'Public repo where tflint config is stored'
         default: 'nuvibit/github-tflint-config'
         required: false
         type: string
       tflint_repo_config_path:
-        description: 'Path to tflint config in tflint_repo'
+        description: 'Path to tflint config in tflint_repo (e.g. "aws/.tflint.hcl")'
         default: 'aws/.tflint.hcl'
         required: false
         type: string
@@ -64,13 +39,18 @@ on:
         required: false
         type: string
       tflint_version:
-        description: 'Tflint version to use'
+        description: 'Tflint version to use in GitHub Actions'
         default: 'latest'
         required: false
         type: string
       trivy_version:
-        description: 'Trivy version to use'
-        default: 'v0.61.1' # fixme: hardcoding version until problems in 0.62.0 are solved.
+        description: 'Trivy version to use in GitHub Actions'
+        default: 'latest'
+        required: false
+        type: string
+      examples_path:
+        description: 'Path to examples directory'
+        default: 'examples'
         required: false
         type: string
       commit_user:
@@ -83,190 +63,167 @@ on:
         default: 'noreply@github.com'
         required: false
         type: string
-      concurrency_group:
-        description: 'Name of concurrency group to manage concurrent github action runs'
-        default: ${{ github.repository }}/${{ github.event.pull_request.head.ref || github.ref }}
+      terraform_modules_github_owner:
+        description: 'GitHub owner for private Terraform modules'
+        default: ''
+        required: false
+        type: string
+      terraform_modules_auth:
+        description: 'Authentication method for private Terraform modules (e.g., github-app)'
+        default: 'github-app'
+        required: false
+        type: string
+      aws_default_region:
+        description: 'Default AWS region for AWS credentials'
+        default: 'eu-central-1'
+        required: false
+        type: string
+      aws_oidc_role_arn:
+        description: 'AWS OIDC Role ARN for assuming AWS credentials'
+        default: ''
         required: false
         type: string
     secrets:
-      # GitHub App credentials to use instead of default GITHUB_TOKEN to avoid not triggering workflow runs on commit
+      GH_APP_PRIVATE_KEY:
+        required: true   
       GH_APP_ID:
         required: true
-      GH_APP_PRIVATE_KEY:
+      NTC_GITHUB_ACCESS_TOKEN:
         required: true
-      # (optional) GitHub App credentials for accessing private Terraform modules (requires 'terraform_modules_auth' to be set to "github-app" and 'terraform_modules_github_owner' to be set)
-      TERRAFORM_MODULES_APP_ID:
-        required: false
-      TERRAFORM_MODULES_APP_PRIVATE_KEY:
-        required: false
-      # (optional) Token for accessing private Terraform module registry (requires 'terraform_registry_hostname' to be set to a private registry)
-      TERRAFORM_REGISTRY_TOKEN:
-        required: false
-
-# Ensures that only one workflow runs at a time
-concurrency: ${{ inputs.concurrency_group }}
-
-# Grant necessary permissions for the workflow
-permissions:
-  id-token: write   # This is required for requesting the JWT
-  contents: read    # This is required for actions/checkout
 
 jobs:
-  terraform-fmt:
+
+  fmt:
     runs-on: ${{ inputs.github_runner }}
     outputs:
       fmt_status: ${{ steps.fmt.outcome }}
       diff_exists: ${{ steps.fmt_commit.outputs.diff }}
 
     steps:
-      - name: Get Github Access Token
-        id: github_app_token
-        uses: actions/create-github-app-token@v2
+      - name: Generate token for GH App in foen-admin-ch organization
+        id: generate-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          # if owner and repositories are empty, access will be scoped to only the current repository
-          # owner: ''
-          # repositories: ''
+          # create a token for the current repository
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ steps.github_app_token.outputs.token }}
-
-      - name: Setup Terraform
-        if: ${{ inputs.use_opentofu == false }}
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ inputs.terraform_version }}
-          terraform_wrapper: false
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Setup OpenTofu
-        if: ${{ inputs.use_opentofu == true }}
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: ${{ inputs.terraform_version }}
-          tofu_wrapper: false
+          tofu_version: ${{ inputs.tofu_version }}
 
-      - name: Terraform Format
+      - name: OpenTofu Format
         id: fmt
-        run: |
-          if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
-            tofu fmt -recursive
-          else
-            terraform fmt -recursive
-          fi
+        run: tofu fmt -recursive
+        working-directory: ${{ inputs.tofu_working_directory }}
 
-      - name: Commit Changes
+      - name: Commit files
         id: fmt_commit
         run: |
+          git config --global url."https://oauth2:${{ steps.generate-token.outputs.token }}@github.com".insteadOf https://github.com
           git config --local user.name "${{ inputs.commit_user }}"
           git config --local user.email "${{ inputs.commit_email }}"
           if [[ -z $(git status -s) ]]; then
-              echo "diff=false" >> $GITHUB_OUTPUT
+            echo "diff=false" >> $GITHUB_OUTPUT
           else
-              echo "diff=true" >> $GITHUB_OUTPUT
+            echo "diff=true" >> $GITHUB_OUTPUT
           fi
-          git diff-index --quiet HEAD || git commit -m "style(terraform fmt): format code" -a
+          git diff-index --quiet HEAD || git commit -m "style(tofu fmt): format code" -a
 
-      - name: Push Changes
+      - name: Push changes
         uses: ad-m/github-push-action@v0.8.0
         with:
-          github_token: ${{ steps.github_app_token.outputs.token }}
-          branch: ${{ github.event.pull_request.head.ref }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.event.pull_request.head.ref || github.ref }}
 
-  terraform-docs:
+  docs:
     needs:
-      - terraform-fmt
-    if: ${{ needs.terraform-fmt.outputs.diff_exists == 'false' }}
+      - fmt
+    if: ${{ needs.fmt.outputs.diff_exists == 'false' }}
     runs-on: ${{ inputs.github_runner }}
     outputs:
       docs_status: ${{ steps.docs.outcome }}
       diff_exists: ${{ steps.docs.outputs.num_changed > 0 }}
 
     steps:
-      - name: Get Github Access Token
-        id: github_app_token
-        uses: actions/create-github-app-token@v2
+      - name: Generate token for GitHub App
+        id: generate-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          # if owner and repositories are empty, access will be scoped to only the current repository
-          # owner: ''
-          # repositories: ''
+          # create a token for the current repository
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ steps.github_app_token.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          token: ${{ steps.generate-token.outputs.token }}
 
-      - name: Check For Submodules
-        id: check_submodules
+      - name: Set Git Access Token
         run: |
-          if [[ -d "./modules" ]]; then
-              echo "dir_exists=true" >> $GITHUB_OUTPUT
-          else
-              echo "dir_exists=false" >> $GITHUB_OUTPUT
-          fi
+          git config --global url."https://oauth2:${{ steps.generate-token.outputs.token }}@github.com".insteadOf https://github.com
 
-      - name: Run Terraform Docs
+      - name: Docs
         id: docs
-        uses: terraform-docs/gh-actions@v1.4.1
+        uses: terraform-docs/gh-actions@v1.3.0
         with:
-          working-dir: .
-          recursive: ${{ steps.check_submodules.outputs.dir_exists }}
-          recursive-path: modules
+          working-dir: ${{ inputs.tofu_working_directory }}
           output-file: README.md
           output-method: inject
-          output-format: markdown document
-          args: --sort-by required --anchor=false
+          args: --sort-by required
           git-push: true
           git-push-user-name: ${{ inputs.commit_user }}
           git-push-user-email: ${{ inputs.commit_email }}
-          git-commit-message: "docs(terraform-docs): update tfdocs"
+          git-commit-message: "docs(docs): update readme"
 
-  terraform-lint:
-    needs: 
-      - terraform-fmt
-      - terraform-docs
-    if: ${{ needs.terraform-fmt.outputs.diff_exists == 'false' && needs.terraform-docs.outputs.diff_exists == 'false' }}
+  lint:
+    needs:
+      - fmt
+      - docs
+    if: ${{ needs.fmt.outputs.diff_exists == 'false' && needs.docs.outputs.diff_exists == 'false' }}
     runs-on: ${{ inputs.github_runner }}
     outputs:
       lint_status: ${{ steps.lint.outcome }}
 
     steps:
-      - name: Get Github Access Token
-        id: github_app_token
-        uses: actions/create-github-app-token@v2
+      - name: Generate token for GitHub App
+        id: generate-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          # if owner and repositories are empty, access will be scoped to only the current repository
-          # owner: ''
-          # repositories: ''
+          # create a token for the current repository
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ steps.github_app_token.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Get TFLint Config
         uses: terraform-linters/tflint-load-config-action@v2
         if: ${{ inputs.tflint_repo_config_path != '' }}
         with:
-          source-repo: ${{ inputs.tflint_repo }}
+          source-repo: ${{ inputs.tflint_repo_name }}
           source-path: ${{ inputs.tflint_repo_config_path }}
           source-ref: ${{ inputs.tflint_repo_ref }}
           destination-path: .tflint.hcl
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Run TFLint
         uses: reviewdog/action-tflint@v1
         id: lint
         with:
-          github_token: ${{ steps.github_app_token.outputs.token }}
+          github_token: ${{ steps.generate-token.outputs.token }}
+          working_directory: ${{ inputs.tofu_working_directory }}
           tflint_version: ${{ inputs.tflint_version }}
           reporter: github-pr-check
           fail_level: error
@@ -275,40 +232,39 @@ jobs:
           flags: ""
           tflint_init: true
 
-  terraform-security:
+  security:
     needs:
-      - terraform-fmt
-      - terraform-docs
-      - terraform-lint
-    if: ${{ needs.terraform-fmt.outputs.diff_exists == 'false' && needs.terraform-docs.outputs.diff_exists == 'false' }}
+      - fmt
+      - docs
+      - lint
+    if: ${{ needs.fmt.outputs.diff_exists == 'false' && needs.docs.outputs.diff_exists == 'false' }}
     runs-on: ${{ inputs.github_runner }}
     outputs:
-      security_status: ${{ steps.security.outcome }}
+      security_status: ${{ steps.security-gate.outcome }}
 
     steps:
-      - name: Get Github Access Token
-        id: github_app_token
-        uses: actions/create-github-app-token@v2
+      - name: Generate token for GitHub App in foen-admin-ch organization
+        id: generate-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          # if owner and repositories are empty, access will be scoped to only the current repository
-          # owner: ''
-          # repositories: ''
+          # create a token for the current repository
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ steps.github_app_token.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          token: ${{ steps.generate-token.outputs.token }}
       
-      - name: Run Trivy
+      - name: Run Trivy Scan
         uses: reviewdog/action-trivy@v1
-        id: security
+        id: security-scan
         with:
-          github_token: ${{ steps.github_app_token.outputs.token }}
+          github_token: ${{ steps.generate-token.outputs.token }}
+          working_directory: ${{ inputs.examples_path }}
           reporter: github-pr-check
-          fail_level: error
+          fail_level: none
           filter_mode: nofilter
           level: error
           flags: ""
@@ -317,36 +273,73 @@ jobs:
           trivy_target: .
           trivy_version: ${{ inputs.trivy_version }}
 
-  opentofu-test:
+      - name: Run Trivy Quality Gate
+        uses: reviewdog/action-trivy@v1
+        id: security-gate
+        with:
+          github_token: ${{ steps.generate-token.outputs.token }}
+          working_directory: ${{ inputs.examples_path }}
+          reporter: github-pr-check
+          fail_level: error
+          filter_mode: nofilter
+          level: error
+          flags: ""
+          trivy_flags: "--severity CRITICAL,HIGH"
+          trivy_command: config
+          trivy_target: .
+          trivy_version: ${{ inputs.trivy_version }}
+
+  tofu-test:
     needs:
-      - terraform-fmt
-      - terraform-docs
-      - terraform-lint
-      - terraform-security
-    if: ${{ needs.terraform-fmt.outputs.diff_exists == 'false' && needs.terraform-docs.outputs.diff_exists == 'false' }}
+      - fmt
+      - docs
+      - lint
+      - security
+    # this job should only run if there are no new commits caused by terraform-fmt or terraform-docs
+    # if terraform-docs is disabled, it should only run if terraform-fmt caused no changes
+    # also only run this job if terraform execution is enabled
+    if: ${{ always() && !failure() && !cancelled() && needs.fmt.outputs.diff_exists == 'false' && (!inputs.enable_terraform_docs || needs.docs.outputs.diff_exists == 'false') }}
     runs-on: ${{ inputs.github_runner }}
-    # Additional permissions for JWT and AWS OIDC
-    permissions:
-      id-token: write
-      contents: read
     outputs:
       test_status: ${{ steps.test.outcome }}
 
     steps:
-      - name: Get Github Access Token
-        id: github_app_token
-        uses: actions/create-github-app-token@v2
+      - name: Generate token for GitHub App
+        id: generate-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          # create a token for the current repository
+
+      - name: Set Private Module Access Token
+        if: ${{ inputs.terraform_modules_auth == 'github-app' }}
+        run: |
+          git config --global url."https://x-access-token:${{ steps.private_module_access.outputs.token }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Set Private NTC Module Access Token
+        env:
+          NTC_GITHUB_ACCESS_TOKEN: ${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}
+        if: ${{ env.NTC_GITHUB_ACCESS_TOKEN != '' }}
+        run: |
+         git config --global url."https://${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}@github.com/nuvibit-terraform-collection".insteadOf "https://github.com/nuvibit-terraform-collection"
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
-          token: ${{ steps.github_app_token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Ensure that the checkout action does not persist credentials to not override private module access
+          persist-credentials: false
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ inputs.tofu_version }}
+          tofu_wrapper: false
 
       - name: Configure AWS credentials
+        if: ${{ inputs.aws_oidc_role_arn != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ inputs.aws_oidc_role_arn }}
@@ -354,96 +347,61 @@ jobs:
           aws-region: ${{ inputs.aws_default_region }}
           role-duration-seconds: 3600
 
-      - name: Setup Terraform
-        if: ${{ inputs.use_opentofu == false }}
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ inputs.terraform_version }}
-          terraform_wrapper: false
-          cli_config_credentials_hostname: ${{ inputs.terraform_registry_hostname }}
-          cli_config_credentials_token: ${{ secrets.TERRAFORM_REGISTRY_TOKEN }}
-
-      - name: Setup OpenTofu
-        if: ${{ inputs.use_opentofu == true }}
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: ${{ inputs.terraform_version }}
-          tofu_wrapper: false
-          cli_config_credentials_hostname: ${{ inputs.terraform_registry_hostname }}
-          cli_config_credentials_token: ${{ secrets.TERRAFORM_REGISTRY_TOKEN }}
-
-      - name: Get Private Module Access Token
-        if: ${{ inputs.terraform_modules_auth == 'github-app' }}
-        id: private_module_access
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.TERRAFORM_MODULES_APP_ID }}
-          private-key: ${{ secrets.TERRAFORM_MODULES_APP_PRIVATE_KEY }}
-          # If owner is set and repositories is empty, access will be scoped to all repositories in the provided repository owner's installation
-          owner: ${{ inputs.terraform_modules_github_owner }}
-
-      - name: Set Private Module Access Token
-        if: ${{ inputs.terraform_modules_auth == 'github-app' }}
-        run: |
-          git config --global url."https://x-access-token:${{ steps.private_module_access.outputs.token }}@github.com/".insteadOf "https://github.com/"
-
-      - name: Initialize Terraform/OpenTofu
+      - name: tofu init
         id: init
         run: |
-          if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
-            tofu init
-          else
-            terraform init
-          fi
+          tofu init
+        working-directory: ${{ inputs.tofu_working_directory }}
 
-      - name: Run Terraform/OpenTofu Test
+      - name: tofu test
         id: test
         run: |
-          if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
-            tofu test
-          else
-            terraform test
-          fi
-        continue-on-error: true
+          tofu test
+        working-directory: ${{ inputs.tofu_working_directory }}
 
-      - name: Test Summary
+      - name: Terraform Test Summary
         run: |
-          echo '### TERRAFORM/OPENTOFU TEST SUMMARY :memo:' >> $GITHUB_STEP_SUMMARY
+          echo '### TERRAFORM TEST SUMMARY :rocket:' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '**Status:** `${{ steps.test.outcome }}`' >> $GITHUB_STEP_SUMMARY
           echo '**Triggered by:** @${{ github.actor }}' >> $GITHUB_STEP_SUMMARY
           echo '**Action:** `${{ github.event_name }}`' >> $GITHUB_STEP_SUMMARY
-          echo '**Tool:** `${{ inputs.use_opentofu == true && 'OpenTofu' || 'Terraform' }}`' >> $GITHUB_STEP_SUMMARY
-
-      - name: Test Status
-        if: ${{ steps.test.outcome == 'failure' }}
-        run: exit 1
+          echo '**Branch:** `${{ github.ref }}`' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '<details><summary>Show Apply Output</summary>' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '```terraform' >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.test.outputs.stdout }}' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '</details>' >> $GITHUB_STEP_SUMMARY
+          
 
   workflow-summary:
     needs:
-      - terraform-fmt
-      - terraform-docs
-      - terraform-lint
-      - terraform-security
-      - opentofu-test
+      - fmt
+      - docs
+      - lint
+      - security
+      - tofu-test
     runs-on: ${{ inputs.github_runner }}
     if: ${{ always() }}
 
     steps:
       - name: Workflow Summary
         env:
-          TF_FMT_RESULT: ${{ needs.terraform-fmt.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-fmt.outputs.fmt_status == 'success' && ':white_check_mark:' || ':x:') }}
-          TF_DOCS_RESULT: ${{ needs.terraform-docs.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-docs.outputs.docs_status == 'success' && ':white_check_mark:' || ':x:') }}
-          TF_LINT_RESULT: ${{ needs.terraform-lint.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-lint.outputs.lint_status == 'success' && ':white_check_mark:' || ':x:') }}
-          TF_SECURITY_RESULT: ${{ needs.terraform-security.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-security.outputs.security_status == 'success' && ':white_check_mark:' || ':x:') }}
-          TF_TEST_RESULT: ${{ needs.opentofu-test.result == 'skipped' && ':heavy_minus_sign:' || (needs.opentofu-test.outputs.test_status == 'success' && ':white_check_mark:' || ':x:') }}
+          TF_FMT_RESULT: ${{ fromJSON('[":white_check_mark:", ":x:"]')[needs.fmt.outputs.fmt_status != 'success'] }}
+          TF_DOCS_RESULT: ${{ fromJSON('[":white_check_mark:", ":x:"]')[needs.docs.outputs.docs_status != 'success'] }}
+          TF_LINT_RESULT: ${{ fromJSON('[":white_check_mark:", ":x:"]')[needs.lint.outputs.lint_status != 'success'] }}
+          TF_SECURITY_RESULT: ${{ fromJSON('[":white_check_mark:", ":x:"]')[needs.security.outputs.security_status != 'success'] }}
+          TF_TEST_RESULT: ${{ fromJSON('[":white_check_mark:", ":x:"]')[needs.tofu-test.outputs.test_status != 'success'] }}
         run: |
           echo '### WORKFLOW SUMMARY :octocat:' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '| result | job |' >> $GITHUB_STEP_SUMMARY
           echo '|---|---|' >> $GITHUB_STEP_SUMMARY
-          echo '| ${{ env.TF_FMT_RESULT }} | terraform format |' >> $GITHUB_STEP_SUMMARY
+          echo '| ${{ env.TF_FMT_RESULT }} | tofu format |' >> $GITHUB_STEP_SUMMARY
           echo '| ${{ env.TF_DOCS_RESULT }} | terraform docs |' >> $GITHUB_STEP_SUMMARY
           echo '| ${{ env.TF_LINT_RESULT }} | terraform lint |' >> $GITHUB_STEP_SUMMARY
-          echo '| ${{ env.TF_SECURITY_RESULT }} | terraform security |' >> $GITHUB_STEP_SUMMARY
-          echo '| ${{ env.TF_TEST_RESULT }} | terraform/opentofu test |' >> $GITHUB_STEP_SUMMARY
+          echo '| ${{ env.TF_SECURITY_RESULT }} | trivy security |' >> $GITHUB_STEP_SUMMARY
+          echo '| ${{ env.TF_TEST_RESULT }} | tofu test |' >> $GITHUB_STEP_SUMMARY
