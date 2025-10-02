@@ -363,7 +363,7 @@ jobs:
           NTC_GITHUB_ACCESS_TOKEN: ${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}
         if: ${{ env.NTC_GITHUB_ACCESS_TOKEN != '' }}
         run: |
-         git config --global url."https://${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}@github.com/nuvibit-terraform-collection".insteadOf "https://github.com/nuvibit-terraform-collection"
+          git config --global url."https://${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}@github.com/nuvibit-terraform-collection".insteadOf "https://github.com/nuvibit-terraform-collection"
 
       - name: Checkout
         uses: actions/checkout@v4
