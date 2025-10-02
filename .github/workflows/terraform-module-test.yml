@@ -39,48 +39,13 @@ on:
         required: false
         type: string
       aws_default_region:
-        description: 'Default AWS region to use for Terratest'
+        description: 'Default AWS region to use for testing'
         default: 'eu-central-1'
         required: false
         type: string
       aws_oidc_role_arn:
-        description: 'AWS OIDC role ARN to assume for Terratest'
+        description: 'AWS OIDC role ARN to assume for testing'
         default: ''
-        required: true
-        type: string
-      terratest_version:
-        description: 'Terratest version'
-        default: 'v0.48.0'
-        required: false
-        type: string
-      terratest_path:
-        description: 'Path to terratest directory'
-        default: 'test'
-        required: false
-        type: string
-      terratest_examples_path:
-        description: 'Path to terratest examples directory'
-        default: 'examples'
-        required: false
-        type: string
-      terratest_max_parallel:
-        description: 'Maximum number of terratest runs that should run simultaneously'
-        default: 1
-        required: false
-        type: number
-      terratest_config_repo:
-        description: 'Public repo where terratest matrix json is stored'
-        default: 'nuvibit/github-terratest-config'
-        required: false
-        type: string
-      terratest_config_repo_ref:
-        description: 'Ref or branch of terratest_config_repo'
-        default: 'main'
-        required: false
-        type: string
-      terratest_config_repo_path:
-        description: 'Path to terratest matrix json config in terratest_config_repo'
-        default: 'aws/matrix.json'
         required: false
         type: string
       tflint_repo:
@@ -136,13 +101,6 @@ on:
         required: false
       # (optional) Token for accessing private Terraform module registry (requires 'terraform_registry_hostname' to be set to a private registry)
       TERRAFORM_REGISTRY_TOKEN:
-        required: false
-      # (optional) Spacelift API key credentials for Spacelift integration
-      SPACELIFT_API_KEY_ENDPOINT:
-        required: false
-      SPACELIFT_API_KEY_ID:
-        required: false
-      SPACELIFT_API_KEY_SECRET:
         required: false
 
 # Ensures that only one workflow runs at a time
@@ -343,20 +301,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ steps.github_app_token.outputs.token }}
-
-      - name: Check For Examples
-        run: |
-          if [[ ! -d "./${{ inputs.terratest_examples_path }}" ]]; then
-            echo "could not find required examples path '${{ inputs.terratest_examples_path }}' for terratest"
-            exit 1
-          fi
       
       - name: Run Trivy
         uses: reviewdog/action-trivy@v1
         id: security
         with:
           github_token: ${{ steps.github_app_token.outputs.token }}
-          working_directory: ${{ inputs.terratest_examples_path }}
           reporter: github-pr-check
           fail_level: error
           filter_mode: nofilter
@@ -367,7 +317,7 @@ jobs:
           trivy_target: .
           trivy_version: ${{ inputs.trivy_version }}
 
-  terratest-config:
+  opentofu-test:
     needs:
       - terraform-fmt
       - terraform-docs
@@ -375,39 +325,53 @@ jobs:
       - terraform-security
     if: ${{ needs.terraform-fmt.outputs.diff_exists == 'false' && needs.terraform-docs.outputs.diff_exists == 'false' }}
     runs-on: ${{ inputs.github_runner }}
+    # Additional permissions for JWT and AWS OIDC
+    permissions:
+      id-token: write
+      contents: read
     outputs:
-      matrix: ${{ steps.set_matrix.outputs.matrix }}
+      test_status: ${{ steps.test.outcome }}
 
     steps:
+      - name: Get Github Access Token
+        id: github_app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.terratest_config_repo }}
-          ref: ${{ inputs.terratest_config_repo_ref }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          token: ${{ steps.github_app_token.outputs.token }}
 
-      - name: Get Terratest Matrix Config
-        id: set_matrix
-        run: |
-          JSON=$(jq -r @json <<< cat ${{ inputs.terratest_config_repo_path }})
-          echo "matrix=$JSON" >> $GITHUB_OUTPUT
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_oidc_role_arn }}
+          role-session-name: GitHubActions-${{ github.run_id }}
+          aws-region: ${{ inputs.aws_default_region }}
+          role-duration-seconds: 3600
 
-  terratest-run:
-    needs:
-      - terraform-fmt
-      - terraform-docs
-      - terraform-lint
-      - terraform-security
-      - terratest-config
-    if: ${{ needs.terraform-fmt.outputs.diff_exists == 'false' && needs.terraform-docs.outputs.diff_exists == 'false' }}
-    runs-on: ${{ inputs.github_runner }}
-    outputs:
-      terratest_status: ${{ steps.terratest_summary.outcome }}
+      - name: Setup Terraform
+        if: ${{ inputs.use_opentofu == false }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+          cli_config_credentials_hostname: ${{ inputs.terraform_registry_hostname }}
+          cli_config_credentials_token: ${{ secrets.TERRAFORM_REGISTRY_TOKEN }}
 
-    strategy:
-      max-parallel: ${{ inputs.terratest_max_parallel }}
-      matrix: ${{ fromJson(needs.terratest-config.outputs.matrix) }}
+      - name: Setup OpenTofu
+        if: ${{ inputs.use_opentofu == true }}
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ inputs.terraform_version }}
+          tofu_wrapper: false
+          cli_config_credentials_hostname: ${{ inputs.terraform_registry_hostname }}
+          cli_config_credentials_token: ${{ secrets.TERRAFORM_REGISTRY_TOKEN }}
 
-    steps:
       - name: Get Private Module Access Token
         if: ${{ inputs.terraform_modules_auth == 'github-app' }}
         id: private_module_access
@@ -423,183 +387,36 @@ jobs:
         run: |
           git config --global url."https://x-access-token:${{ steps.private_module_access.outputs.token }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # Ensure that the checkout action does not persist credentials to not override private module access
-          persist-credentials: false
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-
-      - name: Get Dependencies
-        working-directory: ${{ inputs.terratest_path }}
+      - name: Initialize Terraform/OpenTofu
+        id: init
         run: |
-          wget -O go.mod https://raw.githubusercontent.com/nuvibit/github-terratest-config/refs/heads/main/dependencies/go.mod
-          wget -O go.sum https://raw.githubusercontent.com/nuvibit/github-terratest-config/refs/heads/main/dependencies/go.sum
-          go get -v -t -d
-          wget https://github.com/gruntwork-io/terratest/releases/download/${{ inputs.terratest_version }}/terratest_log_parser_linux_amd64
-          chmod +x terratest_log_parser_linux_amd64
-
-      - name: Cleanup Terraform / OpenTofu
-        run: |
-          rm $(which terraform) 2>/dev/null || rm $(which opentofu) 2>/dev/null || echo "no binaries to cleanup"
-
-      - name: Get Terraform / OpenTofu Version From Requirements
-        id: from_requirements
-        run: |
-          terraform_version="${{ matrix.terraform_version }}"
-          if [[ "$terraform_version" == "FROM_REQUIREMENTS" ]]; then
-            requirements_match=$(grep -zoP 'terraform\s*\{(.|\W)*?required_version\s*=\s*"\D+([0-9\.]+)"' ${{ inputs.terraform_requirements_file }} | grep -zoP '[\d+\.]*\"$')
-            terraform_version=$(echo $requirements_match | grep -zoP '[\d\.]+')
+          if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
+            tofu init
+          else
+            terraform init
           fi
-          echo "terraform_version=$terraform_version" >> $GITHUB_OUTPUT
 
-      - name: Setup Terraform
-        if: ${{ matrix.binary == 'terraform' }}
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ steps.from_requirements.outputs.terraform_version }}
-          terraform_wrapper: false
-          cli_config_credentials_hostname: ${{ inputs.terraform_registry_hostname }}
-          cli_config_credentials_token: ${{ secrets.TERRAFORM_REGISTRY_TOKEN }}
-
-      - name: Setup OpenTofu
-        if: ${{ matrix.binary == 'opentofu' }}
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: ${{ steps.from_requirements.outputs.terraform_version }}
-          tofu_wrapper: false
-          cli_config_credentials_hostname: ${{ inputs.terraform_registry_hostname }}
-          cli_config_credentials_token: ${{ secrets.TERRAFORM_REGISTRY_TOKEN }}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.aws_oidc_role_arn }}
-          role-session-name: GitHubActions-Terratest
-          aws-region: ${{ inputs.aws_default_region }}
-          role-duration-seconds: 3600
-
-      - name: Generate Terraform Lock File
-        if: ${{ matrix.provider_version != '' }}
-        id: terraform_lock_file
-        working-directory: ${{ inputs.terratest_examples_path }}
-        env:
-          PROVIDER_JSON: ${{ toJson(matrix.provider_version) }}
+      - name: Run Terraform/OpenTofu Test
+        id: test
         run: |
-          for d in */; do
-            # create artifact name for github action
-            artifact_name="terraform version $(echo "${{ steps.from_requirements.outputs.terraform_version }}")<br>"
-            # initialize terraform lock file
-            touch "$d/.terraform.lock.hcl"
-            # get required provider versions from matrix json
-            for provider in $(jq -r 'keys | .[]' <<< $PROVIDER_JSON); do
-              version=$(jq -r ".[$k]" <<< $PROVIDER_JSON)
-              # get provider version if contains X from terraform registry
-              if [[ "$version" == *"X"* ]]; then
-                for i in $(curl -s https://registry.terraform.io/v1/providers/$provider | jq -r '.versions' | jq 'reverse' | jq '.[]'); do
-                  if [[ $i =~ "-" ]];
-                  then
-                    continue
-                  fi
-                  i=$(echo $i | tr -d '"')
-                  declare -a semver
-                  semver=($(echo "$version" | tr '.' '\n'))
-                  # if X is on first position
-                  if [[ "${semver[0]}" == "X" ]]; then
-                    version=$i
-                    break;
-                  # if X is on second position
-                  elif [[ "${semver[1]}" == "X" ]]; then
-                    if [[ $i == "${semver[0]}."* ]]; then
-                      version=$i
-                      break;
-                    fi
-                  # if X is on third position
-                  elif [[ "${semver[2]}" == "X" ]]; then
-                    if [[ $i == "${semver[0]}.${semver[1]}."* ]]; then
-                      version=$i
-                      break;
-                    fi
-                  fi
-                done
-              elif [[ "$version" == "FROM_REQUIREMENTS" ]]; then
-                version_match=$(grep -zoP 'required_providers\W*\{\W*aws(.|\n)*?version\W*\"\D*?(\d+\.\d+\.?\d*)\"' $GITHUB_WORKSPACE/*.tf | grep -zoP '[\d+\.]*\"$')
-                version=$(echo $version_match | grep -zoP '[\d\.]+')
-                num="${version//[^.]}"
-                count="${#num}"
-                if [[ $count == 1 ]]; then
-                  version="$version.0"
-                fi
-              fi
-              # append provider versions to artifact name
-              artifact_name+="provider $(echo "$provider" | sed 's:\/:\.:g') = ${version}<br>"
-              # generate terraform lock file for each provider in each terratest example directory
-              echo -en "provider \"${{ inputs.terraform_registry_hostname }}/$provider\" {\n  version = \"$version\"\n}\n\n" >> "$d/.terraform.lock.hcl"
-            done
-            cat "$d/.terraform.lock.hcl"
-            echo "artifact_name=${artifact_name}" >> $GITHUB_OUTPUT
-          done
-
-      - name: Run Terratest
-        id: terratest_run
-        working-directory: ${{ inputs.terratest_path }}
-        env:
-          AWS_DEFAULT_REGION: ${{ inputs.aws_default_region }}
-          SPACELIFT_API_KEY_ENDPOINT: ${{ secrets.SPACELIFT_API_KEY_ENDPOINT }}
-          SPACELIFT_API_KEY_ID: ${{ secrets.SPACELIFT_API_KEY_ID }}
-          SPACELIFT_API_KEY_SECRET: ${{ secrets.SPACELIFT_API_KEY_SECRET }}
-        run: |
-          go test -v -timeout 30m 2>&1 | tee >(./terratest_log_parser_linux_amd64)
-          test ${PIPESTATUS[0]} -eq 0
-          echo "./out/summary.log"
+          if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
+            tofu test
+          else
+            terraform test
+          fi
         continue-on-error: true
-      
-      - name: Terratest Summary
-        if: ${{ always() }}
-        id: terratest_summary
-        working-directory: ${{ inputs.terratest_path }}
+
+      - name: Test Summary
         run: |
-          echo '### TERRATEST SUMMARY :octocat:' >> $GITHUB_STEP_SUMMARY
-          echo '${{ steps.terraform_lock_file.outputs.artifact_name }}' >> $GITHUB_STEP_SUMMARY
+          echo '### TERRAFORM/OPENTOFU TEST SUMMARY :memo:' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
-          echo '| result | test |' >> $GITHUB_STEP_SUMMARY
-          echo '|---|---|' >> $GITHUB_STEP_SUMMARY
+          echo '**Status:** `${{ steps.test.outcome }}`' >> $GITHUB_STEP_SUMMARY
+          echo '**Triggered by:** @${{ github.actor }}' >> $GITHUB_STEP_SUMMARY
+          echo '**Action:** `${{ github.event_name }}`' >> $GITHUB_STEP_SUMMARY
+          echo '**Tool:** `${{ inputs.use_opentofu == true && 'OpenTofu' || 'Terraform' }}`' >> $GITHUB_STEP_SUMMARY
 
-          if [[ ! -f "./out/summary.log" ]]; then
-            echo '' >> $GITHUB_STEP_SUMMARY
-            echo ":x: missing terratest log file 'summary.log'" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          test_exists=false
-          test_failed=false
-          while IFS= read -r line
-          do
-            if [[ "$line" == *"--- PASS"* ]]; then
-              echo "| $line |" | sed 's/--- PASS:/:white_check_mark: |/g' >> $GITHUB_STEP_SUMMARY
-              test_exists=true
-            elif [[ "$line" == *"--- FAIL"* ]]; then
-              echo "| $line |" | sed 's/--- FAIL:/:x: |/g' >> $GITHUB_STEP_SUMMARY
-              test_exists=true
-              test_failed=true
-            fi
-          done < "./out/summary.log"
-
-          if [[ $test_exists == false ]]; then
-            echo '' >> $GITHUB_STEP_SUMMARY
-            echo ":x: no terratest results found in 'summary.log'" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          elif [[ $test_failed == true ]]; then
-            exit 1
-          fi
-        continue-on-error: true
-
-      - name: Terratest Outcome
-        if: ${{ steps.terratest_summary.outcome == 'failure' || steps.terratest_summary.outputs.exitcode == '1' }}
+      - name: Test Status
+        if: ${{ steps.test.outcome == 'failure' }}
         run: exit 1
 
   workflow-summary:
@@ -608,8 +425,7 @@ jobs:
       - terraform-docs
       - terraform-lint
       - terraform-security
-      - terratest-config
-      - terratest-run
+      - opentofu-test
     runs-on: ${{ inputs.github_runner }}
     if: ${{ always() }}
 
@@ -620,7 +436,7 @@ jobs:
           TF_DOCS_RESULT: ${{ needs.terraform-docs.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-docs.outputs.docs_status == 'success' && ':white_check_mark:' || ':x:') }}
           TF_LINT_RESULT: ${{ needs.terraform-lint.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-lint.outputs.lint_status == 'success' && ':white_check_mark:' || ':x:') }}
           TF_SECURITY_RESULT: ${{ needs.terraform-security.result == 'skipped' && ':heavy_minus_sign:' || (needs.terraform-security.outputs.security_status == 'success' && ':white_check_mark:' || ':x:') }}
-          TF_TERRATEST_RESULT: ${{ fromJSON('[":white_check_mark:", ":x:"]')[needs.terratest-run.outputs.terratest_status != 'success'] }}
+          TF_TEST_RESULT: ${{ needs.opentofu-test.result == 'skipped' && ':heavy_minus_sign:' || (needs.opentofu-test.outputs.test_status == 'success' && ':white_check_mark:' || ':x:') }}
         run: |
           echo '### WORKFLOW SUMMARY :octocat:' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
@@ -630,4 +446,4 @@ jobs:
           echo '| ${{ env.TF_DOCS_RESULT }} | terraform docs |' >> $GITHUB_STEP_SUMMARY
           echo '| ${{ env.TF_LINT_RESULT }} | terraform lint |' >> $GITHUB_STEP_SUMMARY
           echo '| ${{ env.TF_SECURITY_RESULT }} | terraform security |' >> $GITHUB_STEP_SUMMARY
-          echo '| ${{ env.TF_TERRATEST_RESULT }} | terratest result |' >> $GITHUB_STEP_SUMMARY
+          echo '| ${{ env.TF_TEST_RESULT }} | terraform/opentofu test |' >> $GITHUB_STEP_SUMMARY
