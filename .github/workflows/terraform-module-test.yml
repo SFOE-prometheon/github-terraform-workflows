@@ -90,6 +90,10 @@ on:
         required: true
       NTC_GITHUB_ACCESS_TOKEN:
         required: true
+      TERRAFORM_MODULES_APP_ID:
+        required: false
+      TERRAFORM_MODULES_APP_PRIVATE_KEY:
+        required: false
 
 jobs:
 
@@ -312,8 +316,22 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           # create a token for the current repository
 
-      - name: Set Private Module Access Token
+      - name: Get Private Module Access Token
         if: ${{ inputs.terraform_modules_auth == 'github-app' }}
+        id: private_module_access
+        uses: actions/create-github-app-token@v2
+        env:
+          TERRAFORM_MODULES_APP_ID: ${{ secrets.TERRAFORM_MODULES_APP_ID }}
+          TERRAFORM_MODULES_APP_PRIVATE_KEY: ${{ secrets.TERRAFORM_MODULES_APP_PRIVATE_KEY }}
+        with:
+          app-id: ${{ secrets.TERRAFORM_MODULES_APP_ID }}
+          private-key: ${{ secrets.TERRAFORM_MODULES_APP_PRIVATE_KEY }}
+          # If owner is set and repositories is empty, access will be scoped to all repositories in the provided repository owner's installation
+          owner: ${{ inputs.terraform_modules_github_owner }}
+        continue-on-error: true
+
+      - name: Set Private Module Access Token
+        if: ${{ inputs.terraform_modules_auth == 'github-app' && steps.private_module_access.outputs.token != '' }}
         run: |
           git config --global url."https://x-access-token:${{ steps.private_module_access.outputs.token }}@github.com/".insteadOf "https://github.com/"
 
