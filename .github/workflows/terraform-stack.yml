@@ -492,6 +492,10 @@ jobs:
           echo '</details>' >> $GITHUB_STEP_SUMMARY
         working-directory: ${{ inputs.terraform_working_directory }}
 
+      - name: Terraform Apply Status
+        if: ${{ steps.set_execution_type.outputs.type == 'apply' && steps.apply.outcome == 'failure' }}
+        run: exit 1
+
       - name: Set Execution Status
         if: always()
         id: execution_status
