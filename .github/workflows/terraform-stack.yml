@@ -429,16 +429,16 @@ jobs:
         if: ${{ steps.set_execution_type.outputs.type == 'plan' }}
         id: plan
         run: |
-          set +e
           if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
             tofu plan -no-color -input=false 2>&1 | tee plan_output.txt
+            # PIPESTATUS[0] captures the exit code of the first command (tofu plan), not tee
+            exit ${PIPESTATUS[0]}
           else
             terraform plan -no-color -input=false 2>&1 | tee plan_output.txt
+            # PIPESTATUS[0] captures the exit code of the first command (terraform plan), not tee
+            exit ${PIPESTATUS[0]}
           fi
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
-          set -e
         working-directory: ${{ inputs.terraform_working_directory }}
-        continue-on-error: true
 
       - name: Terraform Plan Summary
         if: ${{ steps.set_execution_type.outputs.type == 'plan' }}
@@ -468,8 +468,12 @@ jobs:
         run: |
           if [[ "${{ inputs.use_opentofu }}" == "true" ]]; then
             tofu apply -auto-approve -no-color -input=false 2>&1 | tee apply_output.txt
+            # PIPESTATUS[0] captures the exit code of the first command (tofu apply), not tee
+            exit ${PIPESTATUS[0]}
           else
             terraform apply -auto-approve -no-color -input=false 2>&1 | tee apply_output.txt
+            # PIPESTATUS[0] captures the exit code of the first command (terraform apply), not tee
+            exit ${PIPESTATUS[0]}
           fi
         working-directory: ${{ inputs.terraform_working_directory }}
 
