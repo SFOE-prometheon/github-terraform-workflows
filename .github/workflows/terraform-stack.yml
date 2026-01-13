@@ -60,7 +60,7 @@ on:
         type: string
       tflint_repo:
         description: 'Public repo where tflint config is stored'
-        default: 'nuvibit/github-tflint-config'
+        default: 'SFOE-prometheon/github-tflint-config'
         required: false
         type: string
       tflint_repo_config_path:
@@ -143,7 +143,7 @@ jobs:
           # repositories: ''
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.github_app_token.outputs.token }}
@@ -185,7 +185,7 @@ jobs:
           git diff-index --quiet HEAD || git commit -m "style(terraform fmt): format code" -a
 
       - name: Push changes
-        uses: ad-m/github-push-action@v0.8.0
+        uses: ad-m/github-push-action@v1
         with:
           github_token: ${{ steps.github_app_token.outputs.token }}
           branch: ${{ github.event.pull_request.head.ref || github.ref }}
@@ -211,7 +211,7 @@ jobs:
           # repositories: ''
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.github_app_token.outputs.token }}
@@ -253,7 +253,7 @@ jobs:
           # repositories: ''
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.github_app_token.outputs.token }}
