@@ -25,7 +25,7 @@ on:
         type: boolean
       tflint_repo_name:
         description: 'Public repo where tflint config is stored'
-        default: 'nuvibit/github-tflint-config'
+        default: 'SFOE-prometheon/github-tflint-config'
         required: false
         type: string
       tflint_repo_config_path:
