@@ -120,6 +120,9 @@ on:
       # Github access token to get access to NTC (Nuvibit Terraform Collection) modules during terraform / opentofu execution (requires "enable_terraform_execution" to be true)
       NTC_GITHUB_ACCESS_TOKEN:
         required: true
+      # Newline-separated TF_VAR_xxx=value pairs passed through to terraform plan/apply
+      TF_VARS:
+        required: false
 
 # Ensures that only one workflow runs at a time
 concurrency: ${{ inputs.concurrency_group }}
@@ -424,6 +427,18 @@ jobs:
             terraform init
           fi
         working-directory: ${{ inputs.terraform_working_directory }}
+
+      - name: Export TF Variables
+        if: ${{ steps.set_execution_type.outputs.type != 'skip' }}
+        env:
+          TF_VARS: ${{ secrets.TF_VARS }}
+        run: |
+          while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            value="${line#*=}"
+            echo "::add-mask::$value"
+            echo "$line" >> $GITHUB_ENV
+          done <<< "$TF_VARS"
 
       - name: Terraform Plan
         if: ${{ steps.set_execution_type.outputs.type == 'plan' }}
