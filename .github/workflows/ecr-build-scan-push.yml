@@ -31,11 +31,6 @@ on:
         type: string
         default: 'eu-central-1'
 
-      environment:
-        description: 'Deployment environment (dev, test, prod)'
-        required: true
-        type: string
-
     outputs:
       image-tag:
         description: 'Image tag'
@@ -53,7 +48,6 @@ permissions:
 jobs:
   build-scan-push:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
     outputs:
       image_tag: ${{ steps.push.outputs.image_tag }}
 
