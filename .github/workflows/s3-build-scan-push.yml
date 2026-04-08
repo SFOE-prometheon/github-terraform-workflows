@@ -1,0 +1,95 @@
+name: Reusable S3 Upload Workflow
+
+on:
+  workflow_call:
+    inputs:
+      artifact-path:
+        description: 'Path to the artifact file to upload'
+        required: true
+        type: string
+      
+      aws-role:
+        description: 'AWS IAM role ARN to assume for AWS access'
+        required: true
+        type: string
+      
+      s3-bucket:
+        description: 'S3 bucket name for artifact storage'
+        required: true
+        type: string
+      
+      tag-name:
+        description: 'Tag name for the artifact'
+        required: true
+        type: string
+      
+      artifact-name:
+        description: 'Base name for the artifact file'
+        required: true
+        type: string
+      
+      aws-region:
+        description: 'AWS region for S3 operations'
+        required: false
+        type: string
+        default: 'eu-central-1'
+    
+    outputs:      
+      artifact-tag:
+        description: 'Tag name used for the artifact'
+        value: ${{ jobs.upload.outputs.tag }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    outputs:
+      s3-uri: ${{ steps.upload.outputs.s3-uri }}
+      tag: ${{ steps.upload.outputs.tag }}
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
+
+      - name: Scan artifact with Inspector
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        id: inspector
+        with:
+          artifact_type: 'archive'
+          artifact_path: ${{ inputs.artifact-path }}
+          display_vulnerability_findings: "enabled"
+
+          critical_threshold: 1
+          high_threshold: 1
+          medium_threshold: 0
+          low_threshold: 0
+          other_threshold: 0
+
+      - name: Display Inspector vulnerability scan results (Markdown)
+        run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
+            
+      - name: On vulnerability threshold exceeded
+        run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
+
+      - name: Upload artifact to S3
+        id: upload
+        run: |
+          ARTIFACT_NAME="${{ inputs.artifact-name }}-${{ inputs.tag-name }}.zip"
+          S3_URI="s3://${{ inputs.s3-bucket }}/${ARTIFACT_NAME}"
+          
+          aws s3 cp "${{ inputs.artifact-path }}" "${S3_URI}"
+          
+          echo "s3-uri=${S3_URI}" >> $GITHUB_OUTPUT
+          echo "tag=${{ inputs.tag-name }}" >> $GITHUB_OUTPUT
