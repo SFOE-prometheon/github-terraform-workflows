@@ -16,7 +16,7 @@ on:
         default: '.'
 
       aws-role:
-        description: 'AWS IAM role ARN to assume for ECR access'
+        description: 'AWS IAM role ARN to assume for AWS access'
         required: true
         type: string
 
@@ -38,9 +38,8 @@ on:
 
       environment:
         description: 'Deployment environment (dev, test, prod)'
-        required: false
+        required: true
         type: string
-        default: 'dev'
 
     outputs:
       image-tag:
