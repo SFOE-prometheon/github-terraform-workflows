@@ -65,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.upload.outputs.tag }}
+      s3_key: ${{ steps.upload.outputs.s3_key }}
 
     steps:
       - name: Configure AWS credentials
