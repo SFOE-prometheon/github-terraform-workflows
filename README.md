@@ -508,7 +508,18 @@ jobs:
 ## Authors
 This collection is maintained by [Nuvibit](https://nuvibit.com) with help from [these amazing contributors](https://github.com/nuvibit/github-terraform-workflows/graphs/contributors)
 
-# ECR Push Workflow
+<!-- LICENSE -->
+## License
+This collection is licensed under Apache 2.0
+<br />
+See [LICENSE](https://github.com/nuvibit/github-terraform-workflows/tree/master/LICENSE) for full details
+
+<!-- COPYRIGHT -->
+<br />
+<br />
+<p align="center">Copyright &copy; Nuvibit AG</p>
+
+# ECR Build-Scan-Push Workflow
 
 A reusable GitHub Actions workflow that builds, scans, and pushes Docker images to Amazon Elastic Container Registry (ECR) with integrated security scanning using Amazon Inspector.
 
@@ -527,69 +538,7 @@ This workflow automates the process of:
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
-
-## Usage
-
-### Basic Example
-
-```yaml
-name: Build and Push to ECR
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    uses: ./.github/workflows/ecr-push.yml
-    with:
-      ecr-repository: my-app
-      image-tag: ${{ github.sha }}
-    secrets:
-      aws-role: ${{ secrets.AWS_ROLE_ARN }}
-```
-
-### Advanced Example
-
-```yaml
-name: Build and Push to ECR
-on:
-  push:
-    branches: [main, develop]
-
-jobs:
-  deploy:
-    uses: ./.github/workflows/ecr-push.yml
-    with:
-      dockerfile: docker/Dockerfile.prod
-      build-context: ./app
-      ecr-repository: my-microservice
-      image-tag: v1.0.${{ github.run_number }}
-      aws-region: us-east-1
-    secrets:
-      aws-role: ${{ secrets.AWS_ROLE_ARN }}
-```
-
-### Using Output Values
-
-```yaml
-jobs:
-  build:
-    uses: ./.github/workflows/ecr-push.yml
-    with:
-      ecr-repository: my-app
-      image-tag: ${{ github.sha }}
-    secrets:
-      aws-role: ${{ secrets.AWS_ROLE_ARN }}
   
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy image
-        run: |
-          echo "Deploying image with tag: ${{ needs.build.outputs.image-tag }}"
-```
-
 ## Inputs
 
 | Input | Description | Required | Default |
@@ -616,79 +565,11 @@ jobs:
 
 ### 1. AWS IAM Role Setup
 
-The AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store]{https://github.com/SFOE-prometheon/terraform-aws-artefact-store}. The module creates the following example policy for the variable <associated_github_repo_name> :
+The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::{ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:{ORG}/{REPO}:*"
-        }
-      }
-    }
-  ]
-}
-```
+### 2. GitHub Secrets
 
-### 2. Required IAM Permissions
-
-Attach a policy with the following permissions:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage",
-        "ecr:PutImage",
-        "ecr:InitiateLayerUpload",
-        "ecr:UploadLayerPart",
-        "ecr:CompleteLayerUpload"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "inspector2:ScanSbom"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-### 3. ECR Repository
-
-Ensure the target ECR repository exists in your AWS account:
-
-```bash
-aws ecr create-repository --repository-name my-app --region eu-central-1
-```
-
-### 4. GitHub Secrets
-
-Add the AWS role ARN to your repository secrets:
-
-- Navigate to: `Settings` → `Secrets and variables` → `Actions`
-- Create a new secret named `AWS_ROLE_ARN`
-- Value: `arn:aws:iam::{ACCOUNT_ID}:role/{ROLE_NAME}`
+Add the AWS role ARN to your workload repository secrets.
 
 ## Vulnerability Scanning
 
@@ -728,13 +609,17 @@ permissions:
   contents: read    # Required to checkout the repository
 ```
 
-<!-- LICENSE -->
-## License
-This collection is licensed under Apache 2.0
-<br />
-See [LICENSE](https://github.com/nuvibit/github-terraform-workflows/tree/master/LICENSE) for full details
+## Usage Example
 
-<!-- COPYRIGHT -->
-<br />
-<br />
-<p align="center">Copyright &copy; Nuvibit AG</p>
+```yaml
+build-scan-push:
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v1
+  with:
+    dockerfile: Dockerfile
+    build-context: .
+    ecr-repository: workload-artefact-store
+    image-tag: ${{ github.event.release.tag_name }}
+    aws-region: eu-central-1
+  secrets:
+    aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
+```
