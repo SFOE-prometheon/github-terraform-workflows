@@ -1,44 +1,48 @@
-name: Reusable S3 Upload Workflow
+name: Reusable S3 Scan and Push Workflow
 
 on:
   workflow_call:
     inputs:
-      artifact-path:
-        description: 'Path to the artifact file to upload'
-        required: true
-        type: string
-      
-      s3-bucket:
-        description: 'S3 bucket name for artifact storage'
-        required: true
-        type: string
-      
-      tag-name:
-        description: 'Tag name for the artifact'
-        required: true
-        type: string
-      
       artifact-name:
-        description: 'Base name for the artifact file'
+        description: 'Name of the uploaded artifact to download'
         required: true
         type: string
 
       artifact-type:
-        description: 'File type of the artefifact. Can be .zip, .tar, .tar.gz'
+        description: 'File type of the artifact. Can be .zip, .tar, .tar.gz'
         required: false
         type: string
         default: '.zip'
-      
+
+      s3-artifact-name:
+        description: 'Base name used for the S3 key (e.g. drill-frontend → drill-frontend-<tag>)'
+        required: true
+        type: string
+
+      tag-name:
+        description: 'Tag name for the artifact (e.g. latest or a release tag)'
+        required: true
+        type: string
+
+      s3-bucket:
+        description: 'S3 bucket name for artifact storage'
+        required: true
+        type: string
+
       aws-region:
         description: 'AWS region for S3 operations'
         required: false
         type: string
         default: 'eu-central-1'
-    
-    outputs:      
+
+    outputs:
       artifact-tag:
         description: 'Tag name used for the artifact'
-        value: ${{ jobs.upload.outputs.tag }}
+        value: ${{ jobs.scan-push.outputs.tag }}
+      
+      s3-key:
+        description: 'S3 key of the artefact'
+        value: ${{ jobs.scan-push.outputs.s3_key }}      
 
     secrets:
       aws-role:
@@ -54,28 +58,27 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.upload.outputs.tag }}
-    
+
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ inputs.aws-role }}
+          role-to-assume: ${{ secrets.aws-role }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact-name }}
-          path: ${{ inputs.artifact-path }}
+          path: .
 
       - name: Scan artifact with Inspector
         uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
         id: inspector
         with:
           artifact_type: 'archive'
-          artifact_path: ${{ inputs.artifact-path }}
+          artifact_path: ${{ inputs.artifact-name }}${{ inputs.artifact-type }}
           display_vulnerability_findings: "enabled"
-
           critical_threshold: 1
           high_threshold: 1
           medium_threshold: 0
@@ -84,16 +87,17 @@ jobs:
 
       - name: Display Inspector vulnerability scan results (Markdown)
         run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
-            
+
       - name: On vulnerability threshold exceeded
         run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
 
       - name: Upload artifact to S3
         id: upload
         run: |
-          ARTIFACT_NAME="${{ inputs.artifact-name }}-${{ inputs.tag-name }}${{inputs.artifact_type}}"
-          S3_URI="s3://${{ inputs.s3-bucket }}/${ARTIFACT_NAME}"
-          
-          aws s3 cp "${{ inputs.artifact-path }}" "${S3_URI}"
-          
+          S3_KEY="${{ inputs.s3-artifact-name }}-${{ inputs.tag-name }}${{ inputs.artifact-type }}"
+
+          aws s3 cp "${{ inputs.artifact-name }}${{ inputs.artifact-type }}" \
+            "s3://${{ inputs.s3-bucket }}/${S3_KEY}"
+
           echo "tag=${{ inputs.tag-name }}" >> $GITHUB_OUTPUT
+          echo "s3_key=${S3_KEY}" >> $GITHUB_OUTPUT
