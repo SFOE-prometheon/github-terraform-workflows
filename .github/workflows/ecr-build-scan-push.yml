@@ -1,0 +1,105 @@
+name: Reusable ECR Push Workflow
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        description: 'Path to the Dockerfile'
+        required: false
+        type: string
+        default: 'Dockerfile'
+
+      build-context:
+        description: 'Docker build context path'
+        required: false
+        type: string
+        default: '.'
+
+      ecr-repository:
+        description: 'ECR repository name'
+        required: true
+        type: string
+
+      image-tag:
+        description: 'Target ECR image tag'
+        required: true
+        type: string
+
+      aws-region:
+        description: 'AWS region for ECR operations'
+        required: false
+        type: string
+        default: 'eu-central-1'
+
+    outputs:
+      image-tag:
+        description: 'Image tag'
+        value: ${{ jobs.build-scan-push.outputs.image_tag }}
+
+    secrets:
+      aws-role:
+        description: 'AWS IAM role ARN to assume for AWS access'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-scan-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.push.outputs.image_tag }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.build-context }}
+          file: ${{ inputs.dockerfile }}
+          push: false
+          tags: app:${{ inputs.image-tag }}
+          load: true
+
+      - name: Scan container image with Inspector
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        id: inspector
+        with:
+          artifact_type: 'container'
+          artifact_path: app:${{ inputs.image-tag }}
+          display_vulnerability_findings: "enabled"
+          critical_threshold: 1
+          high_threshold: 1
+          medium_threshold: 0
+          low_threshold: 0
+          other_threshold: 0
+
+      - name: Display Inspector vulnerability scan results (Markdown)
+        run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
+
+      - name: On vulnerability threshold exceeded
+        run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push Docker image
+        id: push
+        run: |
+          ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          IMAGE_URI="${ECR_REGISTRY}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }}"
+
+          docker tag app:${{ inputs.image-tag }} ${IMAGE_URI}
+          docker push ${IMAGE_URI}
+
+          echo "image_tag=${{ inputs.image-tag }}" >> $GITHUB_OUTPUT
