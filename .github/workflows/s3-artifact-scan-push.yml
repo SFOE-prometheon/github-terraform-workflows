@@ -15,9 +15,10 @@ on:
         default: '.zip'
 
       s3-artifact-name:
-        description: 'Base name used for the S3 key (e.g. drill-frontend → drill-frontend-<tag>)'
-        required: true
+        description: 'Base name used for the S3 Key (defaults to artifact-name if not set).'
+        required: false
         type: string
+        default: ''
 
       tag-name:
         description: 'Tag name for the artifact (e.g. latest or a release tag)'
@@ -132,7 +133,8 @@ jobs:
       - name: Upload artifact to S3
         id: upload
         run: |
-          S3_KEY="${{ inputs.s3-artifact-name }}-${{ inputs.tag-name }}${{ inputs.artifact-type }}"
+          S3_NAME="${{ inputs.s3-artifact-name != '' && inputs.s3-artifact-name || inputs.artifact-name}}"
+          S3_KEY="${S3_NAME}-${{ inputs.tag-name }}${{ inputs.artifact-type }}"
 
           aws s3 cp "${{ inputs.artifact-name }}${{ inputs.artifact-type }}" \
             "s3://${{ inputs.s3-bucket }}/${S3_KEY}"
