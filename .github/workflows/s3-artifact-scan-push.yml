@@ -115,7 +115,7 @@ jobs:
           low_threshold: 0
           other_threshold: 0
 
-      - name: Display Inspector vulnerability scan results (Markdown)
+      - name: Vulnerability scan results
         run: |
           if [ "${{ inputs.scan-type }}" == "repository" ]; then
             cat ${{ steps.inspector-repository.outputs.inspector_scan_results_markdown }}
@@ -123,7 +123,7 @@ jobs:
             cat ${{ steps.inspector-archive.outputs.inspector_scan_results_markdown }}
           fi
 
-      - name: On vulnerability threshold exceeded
+      - name: Vulnerability Threshhold
         run: |
           if [ "${{ inputs.scan-type }}" == "repository" ]; then
             exit ${{ steps.inspector-repository.outputs.vulnerability_threshold_exceeded }}
