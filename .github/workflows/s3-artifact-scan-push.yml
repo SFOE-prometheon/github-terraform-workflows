@@ -1,0 +1,144 @@
+name: Reusable S3 Scan and Push Workflow
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Name of the uploaded artifact to download'
+        required: true
+        type: string
+
+      artifact-type:
+        description: 'File type of the artifact. Can be .zip, .tar, .tar.gz'
+        required: false
+        type: string
+        default: '.zip'
+
+      s3-artifact-name:
+        description: 'Base name used for the S3 Key (defaults to artifact-name if not set).'
+        required: false
+        type: string
+        default: ''
+
+      tag-name:
+        description: 'Tag name for the artifact (e.g. latest or a release tag)'
+        required: true
+        type: string
+
+      s3-bucket:
+        description: 'S3 bucket name for artifact storage'
+        required: true
+        type: string
+
+      aws-region:
+        description: 'AWS region for S3 operations'
+        required: false
+        type: string
+        default: 'eu-central-1'
+
+      scan-type:
+        description: 'Inspector scan type: "archive" scans the artifact, "repository" scans the checked-out repo'
+        required: false
+        type: string
+        default: 'repository'
+
+    outputs:
+      artifact-tag:
+        description: 'Tag name used for the artifact'
+        value: ${{ jobs.scan-push.outputs.tag }}
+      
+      s3-key:
+        description: 'S3 key of the artefact'
+        value: ${{ jobs.scan-push.outputs.s3_key }}      
+
+    secrets:
+      aws-role:
+        description: 'AWS IAM role ARN to assume for AWS access'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scan-push:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.upload.outputs.tag }}
+      s3_key: ${{ steps.upload.outputs.s3_key }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+
+      # Only needed for repository scan
+      - name: Checkout repository
+        if: inputs.scan-type == 'repository'
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: .
+
+      # Scan the artifact zip
+      - name: Scan artifact with Inspector
+        if: inputs.scan-type == 'archive'
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        id: inspector-archive
+        with:
+          artifact_type: archive
+          artifact_path: ${{ inputs.artifact-name }}${{ inputs.artifact-type }}
+          display_vulnerability_findings: enabled
+          critical_threshold: 1
+          high_threshold: 1
+          medium_threshold: 0
+          low_threshold: 0
+          other_threshold: 0
+
+      # Scan the repository source code
+      - name: Scan repository with Inspector
+        if: inputs.scan-type == 'repository'
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        id: inspector-repository
+        with:
+          artifact_type: repository
+          artifact_path: .
+          display_vulnerability_findings: enabled
+          critical_threshold: 1
+          high_threshold: 1
+          medium_threshold: 0
+          low_threshold: 0
+          other_threshold: 0
+
+      - name: Vulnerability scan results
+        run: |
+          if [ "${{ inputs.scan-type }}" == "repository" ]; then
+            cat ${{ steps.inspector-repository.outputs.inspector_scan_results_markdown }}
+          else
+            cat ${{ steps.inspector-archive.outputs.inspector_scan_results_markdown }}
+          fi
+
+      - name: Vulnerability Threshhold
+        run: |
+          if [ "${{ inputs.scan-type }}" == "repository" ]; then
+            exit ${{ steps.inspector-repository.outputs.vulnerability_threshold_exceeded }}
+          else
+            exit ${{ steps.inspector-archive.outputs.vulnerability_threshold_exceeded }}
+          fi
+
+      - name: Upload artifact to S3
+        id: upload
+        run: |
+          S3_NAME="${{ inputs.s3-artifact-name != '' && inputs.s3-artifact-name || inputs.artifact-name}}"
+          S3_KEY="${S3_NAME}-${{ inputs.tag-name }}${{ inputs.artifact-type }}"
+
+          aws s3 cp "${{ inputs.artifact-name }}${{ inputs.artifact-type }}" \
+            "s3://${{ inputs.s3-bucket }}/${S3_KEY}"
+
+          echo "tag=${{ inputs.tag-name }}" >> $GITHUB_OUTPUT
+          echo "s3_key=${S3_KEY}" >> $GITHUB_OUTPUT
