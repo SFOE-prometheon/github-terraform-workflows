@@ -508,6 +508,226 @@ jobs:
 ## Authors
 This collection is maintained by [Nuvibit](https://nuvibit.com) with help from [these amazing contributors](https://github.com/nuvibit/github-terraform-workflows/graphs/contributors)
 
+# ECR Push Workflow
+
+A reusable GitHub Actions workflow that builds, scans, and pushes Docker images to Amazon Elastic Container Registry (ECR) with integrated security scanning using Amazon Inspector.
+
+## Overview
+
+This workflow automates the process of:
+1. Building a Docker image from your repository
+2. Scanning the image for vulnerabilities using Amazon Inspector
+3. Pushing the image to ECR if security thresholds are met
+
+## Features
+
+- ✅ Configurable Docker build context and Dockerfile path
+- ✅ Automated vulnerability scanning with Amazon Inspector
+- ✅ Customizable security thresholds (critical, high, medium, low)
+- ✅ OIDC authentication with AWS (no long-lived credentials)
+- ✅ Reusable across multiple repositories
+- ✅ Detailed vulnerability reports in Markdown format
+
+## Usage
+
+### Basic Example
+
+```yaml
+name: Build and Push to ECR
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/ecr-push.yml
+    with:
+      ecr-repository: my-app
+      image-tag: ${{ github.sha }}
+    secrets:
+      aws-role: ${{ secrets.AWS_ROLE_ARN }}
+```
+
+### Advanced Example
+
+```yaml
+name: Build and Push to ECR
+on:
+  push:
+    branches: [main, develop]
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/ecr-push.yml
+    with:
+      dockerfile: docker/Dockerfile.prod
+      build-context: ./app
+      ecr-repository: my-microservice
+      image-tag: v1.0.${{ github.run_number }}
+      aws-region: us-east-1
+    secrets:
+      aws-role: ${{ secrets.AWS_ROLE_ARN }}
+```
+
+### Using Output Values
+
+```yaml
+jobs:
+  build:
+    uses: ./.github/workflows/ecr-push.yml
+    with:
+      ecr-repository: my-app
+      image-tag: ${{ github.sha }}
+    secrets:
+      aws-role: ${{ secrets.AWS_ROLE_ARN }}
+  
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy image
+        run: |
+          echo "Deploying image with tag: ${{ needs.build.outputs.image-tag }}"
+```
+
+## Inputs
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `dockerfile` | Path to the Dockerfile | No | `Dockerfile` |
+| `build-context` | Docker build context path | No | `.` |
+| `ecr-repository` | ECR repository name | **Yes** | - |
+| `image-tag` | Target ECR image tag | **Yes** | - |
+| `aws-region` | AWS region for ECR operations | No | `eu-central-1` |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `image-tag` | The image tag that was pushed to ECR |
+
+## Secrets
+
+| Secret | Description | Required |
+|--------|-------------|----------|
+| `aws-role` | AWS IAM role ARN to assume for AWS access | **Yes** |
+
+## Prerequisites
+
+### 1. AWS IAM Role Setup
+
+The AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store]{https://github.com/SFOE-prometheon/terraform-aws-artefact-store}. The module creates the following example policy for the variable <associated_github_repo_name> :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::{ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:{ORG}/{REPO}:*"
+        }
+      }
+    }
+  ]
+}
+```
+
+### 2. Required IAM Permissions
+
+Attach a policy with the following permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "inspector2:ScanSbom"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### 3. ECR Repository
+
+Ensure the target ECR repository exists in your AWS account:
+
+```bash
+aws ecr create-repository --repository-name my-app --region eu-central-1
+```
+
+### 4. GitHub Secrets
+
+Add the AWS role ARN to your repository secrets:
+
+- Navigate to: `Settings` → `Secrets and variables` → `Actions`
+- Create a new secret named `AWS_ROLE_ARN`
+- Value: `arn:aws:iam::{ACCOUNT_ID}:role/{ROLE_NAME}`
+
+## Vulnerability Scanning
+
+The workflow uses Amazon Inspector to scan container images with the following default thresholds:
+
+| Severity | Threshold | Behavior |
+|----------|-----------|----------|
+| Critical | 1 | Fails if ≥1 critical vulnerability found |
+| High | 1 | Fails if ≥1 high vulnerability found |
+| Medium | 0 | Does not fail the build |
+| Low | 0 | Does not fail the build |
+| Other | 0 | Does not fail the build |
+
+If any threshold is exceeded, the workflow will:
+1. Display the vulnerability findings in Markdown format
+2. Fail the workflow before pushing to ECR
+3. Prevent vulnerable images from being deployed
+
+## Workflow Steps
+
+1. **Checkout repository**: Clones the repository code
+2. **Configure AWS credentials**: Assumes the IAM role via OIDC
+3. **Build Docker image**: Creates the Docker image locally
+4. **Scan with Inspector**: Analyzes the image for vulnerabilities
+5. **Display results**: Shows vulnerability findings
+6. **Threshold check**: Fails if security thresholds are exceeded
+7. **Login to ECR**: Authenticates with Amazon ECR
+8. **Tag and push**: Pushes the image to ECR if all checks pass
+
+## Permissions
+
+The workflow requires the following GitHub permissions:
+
+```yaml
+permissions:
+  id-token: write   # Required for OIDC authentication
+  contents: read    # Required to checkout the repository
+```
+
 <!-- LICENSE -->
 ## License
 This collection is licensed under Apache 2.0
