@@ -540,7 +540,7 @@ This workflow automates the process of:
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
-  
+
 ## Inputs
 
 | Input | Description | Required | Default |
@@ -567,11 +567,15 @@ This workflow automates the process of:
 
 ### 1. AWS IAM Role Setup
 
-The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access.
+The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access and ECR permissions.
 
 ### 2. GitHub Secrets
 
 Add the AWS role ARN to your workload repository secrets.
+
+### 3. ECR Repository
+
+An ECR repository must exist in your AWS account with the name specified in the `ecr-repository` input.
 
 ## Vulnerability Scanning
 
@@ -596,7 +600,7 @@ If any threshold is exceeded, the workflow will:
 2. **Configure AWS credentials**: Assumes the IAM role via OIDC
 3. **Build Docker image**: Creates the Docker image locally
 4. **Scan with Inspector**: Analyzes the image for vulnerabilities
-5. **Display results**: Shows vulnerability findings
+5. **Display results**: Shows vulnerability findings in Markdown format
 6. **Threshold check**: Fails if security thresholds are exceeded
 7. **Login to ECR**: Authenticates with Amazon ECR
 8. **Tag and push**: Pushes the image to ECR if all checks pass
@@ -611,17 +615,242 @@ permissions:
   contents: read    # Required to checkout the repository
 ```
 
-## Usage Example
+## Usage Examples
+
+### Basic Usage
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v1
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
   with:
-    dockerfile: Dockerfile
-    build-context: .
     ecr-repository: workload-artefact-store
     image-tag: ${{ github.event.release.tag_name }}
-    aws-region: eu-central-1
   secrets:
     aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
 ```
+
+### Custom Dockerfile and Build Context
+
+```yaml
+build-scan-push:
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+  with:
+    dockerfile: docker/Dockerfile.production
+    build-context: ./app
+    ecr-repository: workload-artefact-store
+    image-tag: v1.2.3
+    aws-region: us-east-1
+  secrets:
+    aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_PROD }}
+```
+
+### Multi-Environment Pipeline
+
+```yaml
+name: Multi-Environment Deployment
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-dev:
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+    with:
+      ecr-repository: my-app-dev
+      image-tag: ${{ github.event.release.tag_name }}
+    secrets:
+      aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
+
+  build-prod:
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+    with:
+      ecr-repository: my-app-prod
+      image-tag: ${{ github.event.release.tag_name }}
+    secrets:
+      aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_PROD }}
+```
+
+# S3 Scan and Push Workflow
+
+**Available starting v5 of the workflows.**
+
+A reusable GitHub Actions workflow that downloads build artifacts, scans them for vulnerabilities, and pushes them to Amazon S3 with integrated security scanning using Amazon Inspector.
+
+## Overview
+
+This workflow automates the process of:
+1. Downloading a build artifact from GitHub Actions
+2. Scanning the artifact or repository for vulnerabilities using Amazon Inspector
+3. Uploading the artifact to S3 if security thresholds are met
+
+## Features
+
+- ✅ Support for multiple artifact types (.zip, .tar, .tar.gz)
+- ✅ Dual scan modes: archive (scans the artifact) or repository (scans source code)
+- ✅ Automated vulnerability scanning with Amazon Inspector
+- ✅ Customizable security thresholds (critical, high, medium, low)
+- ✅ OIDC authentication with AWS (no long-lived credentials)
+- ✅ Reusable across multiple repositories
+- ✅ Detailed vulnerability reports in Markdown format
+- ✅ Flexible S3 key naming
+
+## Inputs
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `artifact-name` | Name of the uploaded artifact to download | **Yes** | - |
+| `artifact-type` | File type of the artifact (`.zip`, `.tar`, `.tar.gz`) | No | `.zip` |
+| `s3-artifact-name` | Base name used for the S3 Key (defaults to artifact-name if not set) | No | `''` |
+| `tag-name` | Tag name for the artifact (e.g., `latest` or a release tag) | **Yes** | - |
+| `s3-bucket` | S3 bucket name for artifact storage | **Yes** | - |
+| `aws-region` | AWS region for S3 operations | No | `eu-central-1` |
+| `scan-type` | Inspector scan type: `archive` scans the artifact, `repository` scans the checked-out repo | No | `repository` |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `artifact-tag` | Tag name used for the artifact |
+| `s3-key` | S3 key of the uploaded artifact |
+
+## Secrets
+
+| Secret | Description | Required |
+|--------|-------------|----------|
+| `aws-role` | AWS IAM role ARN to assume for AWS access | **Yes** |
+
+## Prerequisites
+
+### 1. AWS IAM Role Setup
+
+The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access and S3 permissions.
+
+### 2. GitHub Secrets
+
+Add the AWS role ARN to your workload repository secrets.
+
+### 3. Build Artifact
+
+The artifact must be uploaded in a previous job using `actions/upload-artifact@v4` with a name matching the `artifact-name` input.
+
+## Vulnerability Scanning
+
+The workflow uses Amazon Inspector to scan artifacts or repositories with the following default thresholds:
+
+| Severity | Threshold | Behavior |
+|----------|-----------|----------|
+| Critical | 1 | Fails if ≥1 critical vulnerability found |
+| High | 1 | Fails if ≥1 high vulnerability found |
+| Medium | 0 | Does not fail the build |
+| Low | 0 | Does not fail the build |
+| Other | 0 | Does not fail the build |
+
+If any threshold is exceeded, the workflow will:
+1. Display the vulnerability findings in Markdown format
+2. Fail the workflow before uploading to S3
+3. Prevent vulnerable artifacts from being deployed
+
+### Scan Types
+
+- **`repository`** (default): Checks out the repository and scans the source code
+- **`archive`**: Scans the downloaded artifact file for vulnerabilities
+
+## Workflow Steps
+
+1. **Configure AWS credentials**: Assumes the IAM role via OIDC
+2. **Checkout repository** (if `scan-type: repository`): Clones the repository code
+3. **Download artifact**: Retrieves the artifact from the current workflow run
+4. **Scan with Inspector**: Analyzes the artifact or repository for vulnerabilities
+5. **Display results**: Shows vulnerability findings in Markdown format
+6. **Threshold check**: Fails if security thresholds are exceeded
+7. **Upload to S3**: Pushes the artifact to S3 if all checks pass
+
+## Permissions
+
+The workflow requires the following GitHub permissions:
+
+```yaml
+permissions:
+  id-token: write   # Required for OIDC authentication
+  contents: read    # Required to checkout the repository (if scan-type: repository)
+```
+
+## Usage Examples
+
+### Basic Archive Scan
+
+```yaml
+scan-and-push:
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+  with:
+    artifact-name: my-application
+    artifact-type: .zip
+    tag-name: ${{ github.event.release.tag_name }}
+    s3-bucket: my-artifact-bucket
+  secrets:
+    aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
+```
+
+### Repository Scan with Custom S3 Key
+
+```yaml
+scan-and-push:
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+  with:
+    artifact-name: my-application
+    artifact-type: .tar.gz
+    s3-artifact-name: production-app
+    tag-name: ${{ github.event.release.tag_name }}
+    s3-bucket: my-artifact-bucket
+    aws-region: us-east-1
+    scan-type: repository
+  secrets:
+    aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_PROD }}
+```
+
+### Complete Pipeline Example
+
+```yaml
+name: Build and Deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build application
+        run: |
+          # Your build steps here
+          zip -r my-app.zip dist/
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-app
+          path: my-app.zip
+
+  scan-and-push:
+    needs: build
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+    with:
+      artifact-name: my-app
+      tag-name: ${{ github.event.release.tag_name }}
+      s3-bucket: production-artifacts
+    secrets:
+      aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE }}
+```
+
+## S3 Key Format
+
+The uploaded artifact will be stored in S3 with the following key format:
+
+```
+{s3-artifact-name or artifact-name}-{tag-name}{artifact-type}
+```
+
