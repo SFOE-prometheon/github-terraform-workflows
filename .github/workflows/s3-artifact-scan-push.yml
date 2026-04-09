@@ -35,6 +35,12 @@ on:
         type: string
         default: 'eu-central-1'
 
+      scan-type:
+        description: 'Inspector scan type: "archive" scans the artifact, "repository" scans the checked-out repo'
+        required: false
+        type: string
+        default: 'archive'
+
     outputs:
       artifact-tag:
         description: 'Tag name used for the artifact'
@@ -66,19 +72,41 @@ jobs:
           role-to-assume: ${{ secrets.aws-role }}
           aws-region: ${{ inputs.aws-region }}
 
+      # Only needed for repository scan
+      - name: Checkout repository
+        if: inputs.scan-type == 'repository'
+        uses: actions/checkout@v4
+
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact-name }}
           path: .
 
+      # Scan the artifact zip
       - name: Scan artifact with Inspector
+        if: inputs.scan-type == 'archive'
         uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
-        id: inspector
+        id: inspector-archive
         with:
-          artifact_type: 'archive'
+          artifact_type: archive
           artifact_path: ${{ inputs.artifact-name }}${{ inputs.artifact-type }}
-          display_vulnerability_findings: "enabled"
+          display_vulnerability_findings: enabled
+          critical_threshold: 1
+          high_threshold: 1
+          medium_threshold: 0
+          low_threshold: 0
+          other_threshold: 0
+
+      # Scan the repository source code
+      - name: Scan repository with Inspector
+        if: inputs.scan-type == 'repository'
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        id: inspector-repository
+        with:
+          artifact_type: repository
+          artifact_path: .
+          display_vulnerability_findings: enabled
           critical_threshold: 1
           high_threshold: 1
           medium_threshold: 0
@@ -86,10 +114,20 @@ jobs:
           other_threshold: 0
 
       - name: Display Inspector vulnerability scan results (Markdown)
-        run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
+        run: |
+          if [ "${{ inputs.scan-type }}" == "repository" ]; then
+            cat ${{ steps.inspector-repository.outputs.inspector_scan_results_markdown }}
+          else
+            cat ${{ steps.inspector-archive.outputs.inspector_scan_results_markdown }}
+          fi
 
       - name: On vulnerability threshold exceeded
-        run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
+        run: |
+          if [ "${{ inputs.scan-type }}" == "repository" ]; then
+            exit ${{ steps.inspector-repository.outputs.vulnerability_threshold_exceeded }}
+          else
+            exit ${{ steps.inspector-archive.outputs.vulnerability_threshold_exceeded }}
+          fi
 
       - name: Upload artifact to S3
         id: upload
