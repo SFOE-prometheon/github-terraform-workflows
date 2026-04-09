@@ -521,6 +521,8 @@ See [LICENSE](https://github.com/nuvibit/github-terraform-workflows/tree/master/
 
 # ECR Build-Scan-Push Workflow
 
+**Available starting v5 of the workflows.**
+
 A reusable GitHub Actions workflow that builds, scans, and pushes Docker images to Amazon Elastic Container Registry (ECR) with integrated security scanning using Amazon Inspector.
 
 ## Overview
