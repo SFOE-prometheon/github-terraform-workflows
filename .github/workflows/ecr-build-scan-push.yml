@@ -31,6 +31,12 @@ on:
         type: string
         default: 'eu-central-1'
 
+      exit-on-threshold:
+        description: 'Whether to fail the workflow when Inspector vulnerability thresholds are exceeded'
+        required: false
+        type: boolean
+        default: true
+
     outputs:
       image-tag:
         description: 'Image tag'
@@ -87,6 +93,7 @@ jobs:
         run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
 
       - name: On vulnerability threshold exceeded
+        if: ${{ inputs.exit-on-threshold && steps.inspector.outputs.vulnerability_threshold_exceeded != '0' }}
         run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
 
       - name: Login to Amazon ECR
