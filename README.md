@@ -550,6 +550,7 @@ This workflow automates the process of:
 | `ecr-repository` | ECR repository name | **Yes** | - |
 | `image-tag` | Target ECR image tag | **Yes** | - |
 | `aws-region` | AWS region for ECR operations | No | `eu-central-1` |
+| `exit-on-threshold` | Whether to fail the workflow when Inspector vulnerability thresholds are exceeded | No | `true` |
 
 ## Outputs
 
@@ -591,7 +592,7 @@ The workflow uses Amazon Inspector to scan container images with the following d
 
 If any threshold is exceeded, the workflow will:
 1. Display the vulnerability findings in Markdown format
-2. Fail the workflow before pushing to ECR
+2. Fail the workflow before pushing to ECR (unless `exit-on-threshold: false`)
 3. Prevent vulnerable images from being deployed
 
 ## Workflow Steps
@@ -706,6 +707,7 @@ This workflow automates the process of:
 | `s3-bucket` | S3 bucket name for artifact storage | **Yes** | - |
 | `aws-region` | AWS region for S3 operations | No | `eu-central-1` |
 | `scan-type` | Inspector scan type: `archive` scans the artifact, `repository` scans the checked-out repo | No | `repository` |
+| `exit-on-threshold` | Whether to fail the workflow when Inspector vulnerability thresholds are exceeded | No | `true` |
 
 ## Outputs
 
@@ -748,7 +750,7 @@ The workflow uses Amazon Inspector to scan artifacts or repositories with the fo
 
 If any threshold is exceeded, the workflow will:
 1. Display the vulnerability findings in Markdown format
-2. Fail the workflow before uploading to S3
+2. Fail the workflow before uploading to S3 (unless `exit-on-threshold: false`)
 3. Prevent vulnerable artifacts from being deployed
 
 ### Scan Types
