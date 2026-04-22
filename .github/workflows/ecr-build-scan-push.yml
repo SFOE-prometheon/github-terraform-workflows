@@ -89,11 +89,11 @@ jobs:
           low_threshold: 0
           other_threshold: 0
 
-      - name: Display Inspector vulnerability scan results (Markdown)
+      - name: Vulnerability scan results
         run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
 
-      - name: On vulnerability threshold exceeded
-        if: ${{ inputs.exit-on-threshold && steps.inspector.outputs.vulnerability_threshold_exceeded != '0' }}
+      - name: Vulnerability Threshhold
+        if: ${{ inputs.exit-on-threshold }}
         run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
 
       - name: Login to Amazon ECR
