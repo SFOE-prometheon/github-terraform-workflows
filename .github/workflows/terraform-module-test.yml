@@ -106,14 +106,14 @@ jobs:
     steps:
       - name: Generate token for GH App in foen-admin-ch organization
         id: generate-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           # create a token for the current repository
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ steps.generate-token.outputs.token }}
@@ -142,7 +142,7 @@ jobs:
           git diff-index --quiet HEAD || git commit -m "style(tofu fmt): format code" -a
 
       - name: Push changes
-        uses: ad-m/github-push-action@v0.8.0
+        uses: ad-m/github-push-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.pull_request.head.ref || github.ref }}
@@ -159,14 +159,14 @@ jobs:
     steps:
       - name: Generate token for GitHub App
         id: generate-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           # create a token for the current repository
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.generate-token.outputs.token }}
@@ -200,14 +200,14 @@ jobs:
     steps:
       - name: Generate token for GitHub App
         id: generate-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           # create a token for the current repository
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.generate-token.outputs.token }}
@@ -249,14 +249,14 @@ jobs:
     steps:
       - name: Generate token for GitHub App in foen-admin-ch organization
         id: generate-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           # create a token for the current repository
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.generate-token.outputs.token }}
@@ -310,7 +310,7 @@ jobs:
     steps:
       - name: Generate token for GitHub App
         id: generate-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
@@ -343,7 +343,7 @@ jobs:
          git config --global url."https://${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}@github.com/nuvibit-terraform-collection".insteadOf "https://github.com/nuvibit-terraform-collection"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -358,7 +358,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: ${{ inputs.aws_oidc_role_arn != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ inputs.aws_oidc_role_arn }}
           role-session-name: GitHubActions-${{ github.run_id }}

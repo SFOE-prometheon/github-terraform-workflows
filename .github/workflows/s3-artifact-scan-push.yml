@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.aws-role }}
           aws-region: ${{ inputs.aws-region }}
@@ -83,7 +83,7 @@ jobs:
       # Only needed for repository scan
       - name: Checkout repository
         if: inputs.scan-type == 'repository'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download artifact
         uses: actions/download-artifact@v4

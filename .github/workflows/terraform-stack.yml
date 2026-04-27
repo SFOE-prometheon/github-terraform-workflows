@@ -309,7 +309,7 @@ jobs:
           # repositories: ''
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ steps.github_app_token.outputs.token }}
@@ -369,7 +369,7 @@ jobs:
           git config --global url."https://${{ secrets.NTC_GITHUB_ACCESS_TOKEN }}@github.com/nuvibit-terraform-collection".insteadOf "https://github.com/nuvibit-terraform-collection"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -410,7 +410,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: ${{ inputs.aws_oidc_role_arn != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ inputs.aws_oidc_role_arn }}
           role-session-name: GitHubActions-${{ github.run_id }}
