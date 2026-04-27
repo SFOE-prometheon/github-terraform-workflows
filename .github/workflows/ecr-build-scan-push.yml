@@ -96,6 +96,14 @@ jobs:
         if: ${{ inputs.exit-on-threshold }}
         run: exit ${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: app:${{ inputs.image-tag }}
+          format: 'table'
+          exit-code: ${{ inputs.exit-on-threshold && '1' || '0' }}
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2

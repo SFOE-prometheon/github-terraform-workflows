@@ -138,6 +138,26 @@ jobs:
             exit ${{ steps.inspector-archive.outputs.vulnerability_threshold_exceeded }}
           fi
 
+      - name: Run Trivy vulnerability scanner (archive)
+        if: inputs.scan-type == 'archive'
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: ${{ inputs.artifact-name }}${{ inputs.artifact-type }}
+          format: 'table'
+          exit-code: ${{ inputs.exit-on-threshold && '1' || '0' }}
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Run Trivy vulnerability scanner (repository)
+        if: inputs.scan-type == 'repository'
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: ${{ inputs.exit-on-threshold && '1' || '0' }}
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
       - name: Upload artifact to S3
         id: upload
         run: |
