@@ -521,8 +521,6 @@ See [LICENSE](https://github.com/nuvibit/github-terraform-workflows/tree/master/
 
 # ECR Build-Scan-Push Workflow
 
-**Available starting v5 of the workflows.**
-
 A reusable GitHub Actions workflow that builds, scans, and pushes Docker images to Amazon Elastic Container Registry (ECR) with integrated security scanning using Amazon Inspector.
 
 ## Overview
@@ -536,7 +534,7 @@ This workflow automates the process of:
 
 - ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
-- ✅ Customizable security thresholds (critical, high, medium, low)
+- ✅ Suppress specific findings via `.inspector-ignore` file
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
@@ -550,7 +548,6 @@ This workflow automates the process of:
 | `ecr-repository` | ECR repository name | **Yes** | - |
 | `image-tag` | Target ECR image tag | **Yes** | - |
 | `aws-region` | AWS region for ECR operations | No | `eu-central-1` |
-| `exit-on-threshold` | Whether to fail the workflow when Inspector vulnerability thresholds are exceeded | No | `true` |
 
 ## Outputs
 
@@ -580,7 +577,7 @@ An ECR repository must exist in your AWS account with the name specified in the 
 
 ## Vulnerability Scanning
 
-The workflow uses Amazon Inspector to scan container images with the following default thresholds:
+The workflow uses [Amazon Inspector via the aws-actions/vulnerability-scan-github-action-for-amazon-inspector action](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) to scan container images with the following default thresholds:
 
 | Severity | Threshold | Behavior |
 |----------|-----------|----------|
@@ -592,8 +589,14 @@ The workflow uses Amazon Inspector to scan container images with the following d
 
 If any threshold is exceeded, the workflow will:
 1. Display the vulnerability findings in Markdown format
-2. Fail the workflow before pushing to ECR (unless `exit-on-threshold: false`)
+2. Fail the workflow before pushing to ECR
 3. Prevent vulnerable images from being deployed
+
+### Ignoring Findings
+
+Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. 
+
+See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector/tree/develop#ignoring-specific-findings)) for full documentation on the `ignore_findings` input.
 
 ## Workflow Steps
 
@@ -622,7 +625,7 @@ permissions:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
   with:
     ecr-repository: workload-artefact-store
     image-tag: ${{ github.event.release.tag_name }}
@@ -634,7 +637,7 @@ build-scan-push:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
   with:
     dockerfile: docker/Dockerfile.production
     build-context: ./app
@@ -656,7 +659,7 @@ on:
 
 jobs:
   build-dev:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
     with:
       ecr-repository: my-app-dev
       image-tag: ${{ github.event.release.tag_name }}
@@ -664,7 +667,7 @@ jobs:
       aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
 
   build-prod:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
     with:
       ecr-repository: my-app-prod
       image-tag: ${{ github.event.release.tag_name }}
@@ -673,8 +676,6 @@ jobs:
 ```
 
 # S3 Scan and Push Workflow
-
-**Available starting v5 of the workflows.**
 
 A reusable GitHub Actions workflow that downloads build artifacts, scans them for vulnerabilities, and pushes them to Amazon S3 with integrated security scanning using Amazon Inspector.
 
@@ -687,10 +688,9 @@ This workflow automates the process of:
 
 ## Features
 
-- ✅ Support for multiple artifact types (.zip, .tar, .tar.gz)
-- ✅ Dual scan modes: archive (scans the artifact) or repository (scans source code)
+- ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
-- ✅ Customizable security thresholds (critical, high, medium, low)
+- ✅ Suppress specific findings via `.inspector-ignore` file
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
@@ -707,7 +707,6 @@ This workflow automates the process of:
 | `s3-bucket` | S3 bucket name for artifact storage | **Yes** | - |
 | `aws-region` | AWS region for S3 operations | No | `eu-central-1` |
 | `scan-type` | Inspector scan type: `archive` scans the artifact, `repository` scans the checked-out repo | No | `repository` |
-| `exit-on-threshold` | Whether to fail the workflow when Inspector vulnerability thresholds are exceeded | No | `true` |
 
 ## Outputs
 
@@ -738,7 +737,7 @@ The artifact must be uploaded in a previous job using `actions/upload-artifact@v
 
 ## Vulnerability Scanning
 
-The workflow uses Amazon Inspector to scan artifacts or repositories with the following default thresholds:
+The workflow uses [Amazon Inspector via the aws-actions/vulnerability-scan-github-action-for-amazon-inspector action](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) to scan artifacts or repositories with the following default thresholds:
 
 | Severity | Threshold | Behavior |
 |----------|-----------|----------|
@@ -750,8 +749,14 @@ The workflow uses Amazon Inspector to scan artifacts or repositories with the fo
 
 If any threshold is exceeded, the workflow will:
 1. Display the vulnerability findings in Markdown format
-2. Fail the workflow before uploading to S3 (unless `exit-on-threshold: false`)
+2. Fail the workflow before uploading to S3
 3. Prevent vulnerable artifacts from being deployed
+
+### Ignoring Findings
+
+Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. 
+
+See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector/tree/develop#ignoring-specific-findings)) for full documentation on the `ignore_findings` input.
 
 ### Scan Types
 
@@ -784,7 +789,7 @@ permissions:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
   with:
     artifact-name: my-application
     artifact-type: .zip
@@ -798,7 +803,7 @@ scan-and-push:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
   with:
     artifact-name: my-application
     artifact-type: .tar.gz
@@ -839,7 +844,7 @@ jobs:
 
   scan-and-push:
     needs: build
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
     with:
       artifact-name: my-app
       tag-name: ${{ github.event.release.tag_name }}
