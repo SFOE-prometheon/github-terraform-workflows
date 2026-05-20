@@ -42,12 +42,6 @@ on:
         type: string
         default: 'repository'
 
-      exit-on-threshold:
-        description: 'Whether to fail the workflow when Inspector vulnerability thresholds are exceeded'
-        required: false
-        type: boolean
-        default: true
-
     outputs:
       artifact-tag:
         description: 'Tag name used for the artifact'
@@ -94,7 +88,7 @@ jobs:
       # Scan the artifact zip
       - name: Scan artifact with Inspector
         if: inputs.scan-type == 'archive'
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@develop
         id: inspector-archive
         with:
           artifact_type: archive
@@ -109,7 +103,7 @@ jobs:
       # Scan the repository source code
       - name: Scan repository with Inspector
         if: inputs.scan-type == 'repository'
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@develop
         id: inspector-repository
         with:
           artifact_type: repository
@@ -130,7 +124,6 @@ jobs:
           fi
 
       - name: Vulnerability Threshhold
-        if: ${{ inputs.exit-on-threshold }}
         run: |
           if [ "${{ inputs.scan-type }}" == "repository" ]; then
             exit ${{ steps.inspector-repository.outputs.vulnerability_threshold_exceeded }}
