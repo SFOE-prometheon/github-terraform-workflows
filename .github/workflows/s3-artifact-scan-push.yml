@@ -124,7 +124,6 @@ jobs:
           fi
 
       - name: Vulnerability Threshhold
-        if: ${{ inputs.exit-on-threshold }}
         run: |
           if [ "${{ inputs.scan-type }}" == "repository" ]; then
             exit ${{ steps.inspector-repository.outputs.vulnerability_threshold_exceeded }}
