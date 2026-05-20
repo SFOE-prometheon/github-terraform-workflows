@@ -537,6 +537,7 @@ This workflow automates the process of:
 - ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
 - ✅ Customizable security thresholds (critical, high, medium, low)
+- ✅ Suppress specific findings via `.inspector-ignore` file or `ignore_findings` input
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
@@ -550,7 +551,6 @@ This workflow automates the process of:
 | `ecr-repository` | ECR repository name | **Yes** | - |
 | `image-tag` | Target ECR image tag | **Yes** | - |
 | `aws-region` | AWS region for ECR operations | No | `eu-central-1` |
-| `exit-on-threshold` | Whether to fail the workflow when Inspector vulnerability thresholds are exceeded | No | `true` |
 
 ## Outputs
 
@@ -580,7 +580,7 @@ An ECR repository must exist in your AWS account with the name specified in the 
 
 ## Vulnerability Scanning
 
-The workflow uses Amazon Inspector to scan container images with the following default thresholds:
+The workflow uses [Amazon Inspector via the aws-actions/vulnerability-scan-github-action-for-amazon-inspector action](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) to scan container images with the following default thresholds:
 
 | Severity | Threshold | Behavior |
 |----------|-----------|----------|
@@ -592,8 +592,22 @@ The workflow uses Amazon Inspector to scan container images with the following d
 
 If any threshold is exceeded, the workflow will:
 1. Display the vulnerability findings in Markdown format
-2. Fail the workflow before pushing to ECR (unless `exit-on-threshold: false`)
+2. Fail the workflow before pushing to ECR
 3. Prevent vulnerable images from being deployed
+
+### Ignoring Findings
+
+Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. Lines starting with `#` are treated as comments.
+
+```
+# Ignore known false positives
+CVE-2021-12345
+CVE-2022-67890
+# GHSA IDs are also supported
+GHSA-mqqf-5wvp-8fh8
+```
+
+See the [aws-actions repo](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) for full documentation on the `ignore_findings` input and other options.
 
 ## Workflow Steps
 
@@ -707,7 +721,6 @@ This workflow automates the process of:
 | `s3-bucket` | S3 bucket name for artifact storage | **Yes** | - |
 | `aws-region` | AWS region for S3 operations | No | `eu-central-1` |
 | `scan-type` | Inspector scan type: `archive` scans the artifact, `repository` scans the checked-out repo | No | `repository` |
-| `exit-on-threshold` | Whether to fail the workflow when Inspector vulnerability thresholds are exceeded | No | `true` |
 
 ## Outputs
 
@@ -738,7 +751,7 @@ The artifact must be uploaded in a previous job using `actions/upload-artifact@v
 
 ## Vulnerability Scanning
 
-The workflow uses Amazon Inspector to scan artifacts or repositories with the following default thresholds:
+The workflow uses [Amazon Inspector via the aws-actions/vulnerability-scan-github-action-for-amazon-inspector action](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) to scan artifacts or repositories with the following default thresholds:
 
 | Severity | Threshold | Behavior |
 |----------|-----------|----------|
@@ -750,8 +763,22 @@ The workflow uses Amazon Inspector to scan artifacts or repositories with the fo
 
 If any threshold is exceeded, the workflow will:
 1. Display the vulnerability findings in Markdown format
-2. Fail the workflow before uploading to S3 (unless `exit-on-threshold: false`)
+2. Fail the workflow before uploading to S3
 3. Prevent vulnerable artifacts from being deployed
+
+### Ignoring Findings
+
+Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. Lines starting with `#` are treated as comments.
+
+```
+# Ignore known false positives
+CVE-2021-12345
+CVE-2022-67890
+# GHSA IDs are also supported
+GHSA-mqqf-5wvp-8fh8
+```
+
+See the [aws-actions repo](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) for full documentation on the `ignore_findings` input and other options.
 
 ### Scan Types
 
