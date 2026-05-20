@@ -521,8 +521,6 @@ See [LICENSE](https://github.com/nuvibit/github-terraform-workflows/tree/master/
 
 # ECR Build-Scan-Push Workflow
 
-**Available starting v5 of the workflows.**
-
 A reusable GitHub Actions workflow that builds, scans, and pushes Docker images to Amazon Elastic Container Registry (ECR) with integrated security scanning using Amazon Inspector.
 
 ## Overview
@@ -536,8 +534,7 @@ This workflow automates the process of:
 
 - ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
-- ✅ Customizable security thresholds (critical, high, medium, low)
-- ✅ Suppress specific findings via `.inspector-ignore` file or `ignore_findings` input
+- ✅ Suppress specific findings via `.inspector-ignore` file
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
@@ -597,17 +594,9 @@ If any threshold is exceeded, the workflow will:
 
 ### Ignoring Findings
 
-Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. Lines starting with `#` are treated as comments.
+Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. 
 
-```
-# Ignore known false positives
-CVE-2021-12345
-CVE-2022-67890
-# GHSA IDs are also supported
-GHSA-mqqf-5wvp-8fh8
-```
-
-See the [aws-actions repo](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) for full documentation on the `ignore_findings` input and other options.
+See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector/tree/develop#ignoring-specific-findings)) for full documentation on the `ignore_findings` input.
 
 ## Workflow Steps
 
@@ -636,7 +625,7 @@ permissions:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
   with:
     ecr-repository: workload-artefact-store
     image-tag: ${{ github.event.release.tag_name }}
@@ -648,7 +637,7 @@ build-scan-push:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
   with:
     dockerfile: docker/Dockerfile.production
     build-context: ./app
@@ -670,7 +659,7 @@ on:
 
 jobs:
   build-dev:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
     with:
       ecr-repository: my-app-dev
       image-tag: ${{ github.event.release.tag_name }}
@@ -678,7 +667,7 @@ jobs:
       aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
 
   build-prod:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v5
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
     with:
       ecr-repository: my-app-prod
       image-tag: ${{ github.event.release.tag_name }}
@@ -687,8 +676,6 @@ jobs:
 ```
 
 # S3 Scan and Push Workflow
-
-**Available starting v5 of the workflows.**
 
 A reusable GitHub Actions workflow that downloads build artifacts, scans them for vulnerabilities, and pushes them to Amazon S3 with integrated security scanning using Amazon Inspector.
 
@@ -701,10 +688,9 @@ This workflow automates the process of:
 
 ## Features
 
-- ✅ Support for multiple artifact types (.zip, .tar, .tar.gz)
-- ✅ Dual scan modes: archive (scans the artifact) or repository (scans source code)
+- ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
-- ✅ Customizable security thresholds (critical, high, medium, low)
+- ✅ Suppress specific findings via `.inspector-ignore` file
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
 - ✅ Detailed vulnerability reports in Markdown format
@@ -768,17 +754,9 @@ If any threshold is exceeded, the workflow will:
 
 ### Ignoring Findings
 
-Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. Lines starting with `#` are treated as comments.
+Specific findings can be suppressed so they don't count towards thresholds or appear in reports. Place an `.inspector-ignore` plain-text file at the root of your repository with one CVE/finding ID per line. 
 
-```
-# Ignore known false positives
-CVE-2021-12345
-CVE-2022-67890
-# GHSA IDs are also supported
-GHSA-mqqf-5wvp-8fh8
-```
-
-See the [aws-actions repo](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector) for full documentation on the `ignore_findings` input and other options.
+See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector](https://github.com/aws-actions/vulnerability-scan-github-action-for-amazon-inspector/tree/develop#ignoring-specific-findings)) for full documentation on the `ignore_findings` input.
 
 ### Scan Types
 
@@ -811,7 +789,7 @@ permissions:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
   with:
     artifact-name: my-application
     artifact-type: .zip
@@ -825,7 +803,7 @@ scan-and-push:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
   with:
     artifact-name: my-application
     artifact-type: .tar.gz
@@ -866,7 +844,7 @@ jobs:
 
   scan-and-push:
     needs: build
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v5
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
     with:
       artifact-name: my-app
       tag-name: ${{ github.event.release.tag_name }}
