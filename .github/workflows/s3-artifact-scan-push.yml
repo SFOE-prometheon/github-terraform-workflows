@@ -103,7 +103,7 @@ jobs:
       # Scan the repository source code
       - name: Scan repository with Inspector
         if: inputs.scan-type == 'repository'
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@develop
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1.5.0
         id: inspector-repository
         with:
           artifact_type: repository
