@@ -74,9 +74,7 @@ jobs:
           role-to-assume: ${{ secrets.aws-role }}
           aws-region: ${{ inputs.aws-region }}
 
-      # Only needed for repository scan
       - name: Checkout repository
-        if: inputs.scan-type == 'repository'
         uses: actions/checkout@v4
 
       - name: Download artifact
