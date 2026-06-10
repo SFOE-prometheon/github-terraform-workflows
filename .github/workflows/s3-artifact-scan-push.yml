@@ -88,7 +88,7 @@ jobs:
       # Scan the artifact zip
       - name: Scan artifact with Inspector
         if: inputs.scan-type == 'archive'
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@develop
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1.5.0
         id: inspector-archive
         with:
           artifact_type: archive
