@@ -71,7 +71,7 @@ jobs:
           load: true
 
       - name: Scan container image with Inspector
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@develop
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1.5.0
         id: inspector
         with:
           artifact_type: 'container'
