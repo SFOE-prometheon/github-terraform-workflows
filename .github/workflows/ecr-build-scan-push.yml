@@ -76,12 +76,15 @@ jobs:
           tags: app:${{ inputs.image-tag }}
           load: true
 
+      - name: Check disk space
+        run: df -h
+
       - name: Scan container image with Inspector
         uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@develop
         id: inspector
         with:
-          artifact_type: 'container'
-          artifact_path: app:${{ inputs.image-tag }}
+          artifact_type: 'archive'
+          artifact_path: image.tar
           display_vulnerability_findings: "enabled"
           critical_threshold: 1
           high_threshold: 1
