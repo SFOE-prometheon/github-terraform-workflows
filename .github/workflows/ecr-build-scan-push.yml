@@ -73,14 +73,14 @@ jobs:
           file: ${{ inputs.dockerfile }}
           push: false
           tags: app:${{ inputs.image-tag }}
-          outputs: type=docker,dest=/tmp/docker_image.tar
+          outputs: type=docker,dest=${{ github.workspace }}/docker_image.tar
 
       - name: Scan container image with Inspector
         uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1.5.0
         id: inspector
         with:
           artifact_type: 'container'
-          artifact_path: '/tmp/docker_image.tar'
+          artifact_path: '${{ github.workspace }}/docker_image.tar'
           display_vulnerability_findings: "enabled"
           critical_threshold: 1
           high_threshold: 1
@@ -101,7 +101,7 @@ jobs:
       - name: Tag and push Docker image
         id: push
         run: |
-          docker load -i /tmp/docker_image.tar
+          docker load -i ${{ github.workspace }}/docker_image.tar
           ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
           IMAGE_URI="${ECR_REGISTRY}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }}"
 
