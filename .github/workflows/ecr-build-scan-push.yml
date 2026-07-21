@@ -31,6 +31,12 @@ on:
         type: string
         default: 'eu-central-1'
 
+      additional-tags:
+        description: 'Additional image tags to push (comma-separated, e.g. "latest,stable")'
+        required: false
+        type: string
+        default: ''
+
     outputs:
       image-tag:
         description: 'Image tag'
@@ -101,5 +107,12 @@ jobs:
 
           docker tag app:${{ inputs.image-tag }} ${IMAGE_URI}
           docker push ${IMAGE_URI}
+
+          IFS=',' read -ra EXTRA_TAGS <<< "${{ inputs.additional-tags }}"
+          for tag in "${EXTRA_TAGS[@]}"; do
+            [ -z "${tag}" ] && continue
+            docker tag app:${{ inputs.image-tag }} "${ECR_REGISTRY}/${{ inputs.ecr-repository }}:${tag}"
+            docker push "${ECR_REGISTRY}/${{ inputs.ecr-repository }}:${tag}"
+          done
 
           echo "image_tag=${{ inputs.image-tag }}" >> $GITHUB_OUTPUT
