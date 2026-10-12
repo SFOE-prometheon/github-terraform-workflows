@@ -548,6 +548,7 @@ This workflow automates the process of:
 | `ecr-repository` | ECR repository name | **Yes** | - |
 | `image-tag` | Target ECR image tag | **Yes** | - |
 | `aws-region` | AWS region for ECR operations | No | `eu-central-1` |
+| `additional-tags` | Additional image tags to push (comma-separated, e.g. `latest,stable`) | No | `''` |
 
 ## Outputs
 
@@ -625,7 +626,7 @@ permissions:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
   with:
     ecr-repository: workload-artefact-store
     image-tag: ${{ github.event.release.tag_name }}
@@ -637,7 +638,7 @@ build-scan-push:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
   with:
     dockerfile: docker/Dockerfile.production
     build-context: ./app
@@ -659,7 +660,7 @@ on:
 
 jobs:
   build-dev:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
     with:
       ecr-repository: my-app-dev
       image-tag: ${{ github.event.release.tag_name }}
@@ -667,7 +668,7 @@ jobs:
       aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
 
   build-prod:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v9
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
     with:
       ecr-repository: my-app-prod
       image-tag: ${{ github.event.release.tag_name }}
@@ -763,6 +764,20 @@ See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-gi
 - **`repository`** (default): Checks out the repository and scans the source code
 - **`archive`**: Scans the downloaded artifact file for vulnerabilities
 
+### ⚠️ Vue / Yarn Frontends: Scan the Repository, not the Zip
+
+For Vue based frontends - and generally for any yarn managed JavaScript library - the scan
+**must** run against the repository contents as the artefact, **not** against the zip archive:
+
+- ✅ Use `scan-type: repository` (default). Inspector then analyses the checked-out repository,
+  including `package.json` and `yarn.lock`, and resolves the full yarn dependency tree.
+- ❌ Do **not** use `scan-type: archive` for these frontends. When the scan runs on the zip,
+  the dependencies are not analyzed correctly: the archive only holds the bundled build output,
+  so the yarn dependency tree is not resolved and vulnerabilities in those dependencies are missed.
+
+The artefact zip is still uploaded to S3 as usual - only the scan target changes.
+See [Vue / Yarn Frontend Pipeline](#vue--yarn-frontend-pipeline) for a complete example.
+
 ## Workflow Steps
 
 1. **Configure AWS credentials**: Assumes the IAM role via OIDC
@@ -789,12 +804,13 @@ permissions:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
   with:
     artifact-name: my-application
     artifact-type: .zip
     tag-name: ${{ github.event.release.tag_name }}
     s3-bucket: my-artifact-bucket
+    scan-type: archive
   secrets:
     aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
 ```
@@ -803,7 +819,7 @@ scan-and-push:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
   with:
     artifact-name: my-application
     artifact-type: .tar.gz
@@ -841,14 +857,68 @@ jobs:
         with:
           name: my-app
           path: my-app.zip
+          retention-days: 1
 
   scan-and-push:
     needs: build
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-scan-push.yml@v9
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
     with:
       artifact-name: my-app
       tag-name: ${{ github.event.release.tag_name }}
       s3-bucket: production-artifacts
+    secrets:
+      aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE }}
+```
+
+### Vue / Yarn Frontend Pipeline
+
+Frontends built with Vue (or any yarn-managed JavaScript library) must be scanned with
+`scan-type: repository` so that Inspector sees the checked-out repository including the
+yarn dependency manifests. Scanning the zip would not analyze the dependencies correctly
+(see the note under [Scan Types](#scan-types)).
+
+```yaml
+name: Build and Deploy Frontend
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies and build
+        run: |
+          yarn install --frozen-lockfile
+          yarn build
+          zip -r my-frontend.zip dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-frontend
+          path: my-frontend.zip
+          # artifact is only needed until the scan-and-push job consumed it
+          retention-days: 1
+
+  scan-and-push:
+    needs: build
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
+    with:
+      artifact-name: my-frontend
+      artifact-type: .zip
+      tag-name: ${{ github.event.release.tag_name }}
+      s3-bucket: production-artifacts
+      # the zip only contains the built bundle - scan the repository instead
+      scan-type: repository
     secrets:
       aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE }}
 ```
