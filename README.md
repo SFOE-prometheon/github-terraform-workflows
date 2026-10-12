@@ -890,23 +890,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Install dependencies and build
-        run: |
-          yarn install --frozen-lockfile
-          yarn build
-          zip -r my-frontend.zip dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: my-frontend
           path: my-frontend.zip
-          # artifact is only needed until the scan-and-push job consumed it
           retention-days: 1
 
   scan-and-push:
