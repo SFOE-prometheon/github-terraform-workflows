@@ -527,13 +527,15 @@ A reusable GitHub Actions workflow that builds, scans, and pushes Docker images 
 
 This workflow automates the process of:
 1. Building a Docker image from your repository
-2. Scanning the image for vulnerabilities using Amazon Inspector
-3. Pushing the image to ECR if security thresholds are met
+2. Logging in to the AWS Public ECR registry (`public.ecr.aws`) so the Amazon Inspector scan action can be pulled authenticated
+3. Scanning the image for vulnerabilities using Amazon Inspector
+4. Pushing the image to ECR if security thresholds are met
 
 ## Features
 
 - ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
+- ✅ Authenticated pull of the Amazon Inspector scan action's base image from the AWS Public ECR registry (`public.ecr.aws`)
 - ✅ Suppress specific findings via `.inspector-ignore` file
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
@@ -565,7 +567,24 @@ This workflow automates the process of:
 
 ### 1. AWS IAM Role Setup
 
-The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access and ECR permissions.
+The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access, ECR permissions and AWS Public ECR login permissions.
+
+**Minimum required version of the artefact store module: `2.1.0`** - earlier versions do not grant the AWS Public ECR login permissions needed to pull the Amazon Inspector scan action's base image.
+
+```hcl
+module "artefact_store" {
+  source  = "github.com/SFOE-prometheon/terraform-aws-artefact-store?ref=2.1.0"
+
+  associated_github_repo_name = "my-workload-repository"
+}
+```
+
+The assumed role must allow the following actions in addition to the Inspector and ECR permissions:
+
+| Action | Purpose |
+|--------|---------|
+| `ecr-public:GetAuthorizationToken` | Obtain the login token for `public.ecr.aws` |
+| `sts:GetServiceBearerToken` | Required alongside `ecr-public:GetAuthorizationToken` for AWS Public ECR authentication |
 
 ### 2. GitHub Secrets
 
@@ -602,12 +621,19 @@ See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-gi
 
 1. **Checkout repository**: Clones the repository code
 2. **Configure AWS credentials**: Assumes the IAM role via OIDC
-3. **Build Docker image**: Creates the Docker image locally
-4. **Scan with Inspector**: Analyzes the image for vulnerabilities
-5. **Display results**: Shows vulnerability findings in Markdown format
-6. **Threshold check**: Fails if security thresholds are exceeded
-7. **Login to ECR**: Authenticates with Amazon ECR
-8. **Tag and push**: Pushes the image to ECR if all checks pass
+3. **Login to Amazon ECR Public**: Authenticates docker against `public.ecr.aws` in `us-east-1` so the Amazon Inspector scan action's base image can be pulled authenticated
+4. **Build Docker image**: Creates the Docker image locally
+5. **Checkout Inspector scan action**: Vendors the Inspector scan action source into `.inspector-action` so it runs as a local action, built after the public ECR login
+6. **Scan with Inspector**: Analyzes the image for vulnerabilities
+7. **Remove Inspector scan action source**: Deletes the vendored `.inspector-action` directory
+8. **Display results**: Shows vulnerability findings in Markdown format
+9. **Threshold check**: Fails if security thresholds are exceeded
+10. **Login to ECR**: Authenticates with Amazon ECR
+11. **Tag and push**: Pushes the image to ECR if all checks pass
+
+The AWS Public ECR login always uses `us-east-1`, which is the only region serving the `public.ecr.aws` registry endpoint. It is independent of the `aws-region` input, which still applies to all other ECR operations. This login is for pulling the base image of the Amazon Inspector scan action only - pushing your image to the private ECR registry is handled by the separate **Login to Amazon ECR** step.
+
+The Inspector scan action is referenced as a vendored local action (`uses: ./.inspector-action`) rather than directly by `aws-actions/...@v1.5.0`. This is what makes the public ECR login effective: the action is a Docker container action whose image is built from `public.ecr.aws/aws-cli/aws-cli` as its base. When an action is referenced directly, GitHub builds that image during job initialization, before any step runs, so a login step cannot authenticate the pull. By checking the action out into the workspace first and referencing it locally, its image is built at the point the scan step runs - after the login step has written credentials to the runner's Docker config - so the base image pull is authenticated.
 
 ## Permissions
 
@@ -682,14 +708,16 @@ A reusable GitHub Actions workflow that downloads build artifacts, scans them fo
 ## Overview
 
 This workflow automates the process of:
-1. Downloading a build artifact from GitHub Actions
-2. Scanning the artifact or repository for vulnerabilities using Amazon Inspector
-3. Uploading the artifact to S3 if security thresholds are met
+1. Logging in to the AWS Public ECR registry (`public.ecr.aws`) so the Amazon Inspector scan action can be pulled authenticated
+2. Downloading a build artifact from GitHub Actions
+3. Scanning the artifact or repository for vulnerabilities using Amazon Inspector
+4. Uploading the artifact to S3 if security thresholds are met
 
 ## Features
 
 - ✅ Configurable Docker build context and Dockerfile path
 - ✅ Automated vulnerability scanning with Amazon Inspector
+- ✅ Authenticated pull of the Amazon Inspector scan action's base image from the AWS Public ECR registry (`public.ecr.aws`)
 - ✅ Suppress specific findings via `.inspector-ignore` file
 - ✅ OIDC authentication with AWS (no long-lived credentials)
 - ✅ Reusable across multiple repositories
@@ -725,7 +753,24 @@ This workflow automates the process of:
 
 ### 1. AWS IAM Role Setup
 
-The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access and S3 permissions.
+The required AWS IAM Role can be created using the [SFOE-prometheon/terraform-aws-artefact-store](https://github.com/SFOE-prometheon/terraform-aws-artefact-store) by setting your workload repository as the module variable `associated_github_repo_name`. The module creates an IAM role with the required policy attachments, including AWS Inspector access, S3 permissions and AWS Public ECR login permissions.
+
+**Minimum required version of the artefact store module: `2.1.0`** - earlier versions do not grant the AWS Public ECR login permissions needed to pull the Amazon Inspector scan action's base image.
+
+```hcl
+module "artefact_store" {
+  source  = "github.com/SFOE-prometheon/terraform-aws-artefact-store?ref=2.1.0"
+
+  associated_github_repo_name = "my-workload-repository"
+}
+```
+
+The assumed role must allow the following actions in addition to the Inspector and S3 permissions:
+
+| Action | Purpose |
+|--------|---------|
+| `ecr-public:GetAuthorizationToken` | Obtain the login token for `public.ecr.aws` |
+| `sts:GetServiceBearerToken` | Required alongside `ecr-public:GetAuthorizationToken` for AWS Public ECR authentication |
 
 ### 2. GitHub Secrets
 
@@ -766,12 +811,19 @@ See the [aws-actions repo]([https://github.com/aws-actions/vulnerability-scan-gi
 ## Workflow Steps
 
 1. **Configure AWS credentials**: Assumes the IAM role via OIDC
-2. **Checkout repository** (if `scan-type: repository`): Clones the repository code
-3. **Download artifact**: Retrieves the artifact from the current workflow run
-4. **Scan with Inspector**: Analyzes the artifact or repository for vulnerabilities
-5. **Display results**: Shows vulnerability findings in Markdown format
-6. **Threshold check**: Fails if security thresholds are exceeded
-7. **Upload to S3**: Pushes the artifact to S3 if all checks pass
+2. **Checkout repository**: Clones the repository code
+3. **Login to Amazon ECR Public**: Authenticates docker against `public.ecr.aws` in `us-east-1` so the Amazon Inspector scan action's base image can be pulled authenticated
+4. **Checkout Inspector scan action**: Vendors the Inspector scan action source into `.inspector-action` so it runs as a local action, built after the public ECR login
+5. **Download artifact**: Retrieves the artifact from the current workflow run
+6. **Scan with Inspector**: Analyzes the artifact or repository for vulnerabilities
+7. **Remove Inspector scan action source**: Deletes the vendored `.inspector-action` directory
+8. **Display results**: Shows vulnerability findings in Markdown format
+9. **Threshold check**: Fails if security thresholds are exceeded
+10. **Upload to S3**: Pushes the artifact to S3 if all checks pass
+
+The AWS Public ECR login always uses `us-east-1`, which is the only region serving the `public.ecr.aws` registry endpoint. It is independent of the `aws-region` input, which still applies to the S3 operations.
+
+The Inspector scan action is referenced as a vendored local action (`uses: ./.inspector-action`) rather than directly by `aws-actions/...@v1.5.0`. This is what makes the public ECR login effective: the action is a Docker container action whose image is built from `public.ecr.aws/aws-cli/aws-cli` as its base. When an action is referenced directly, GitHub builds that image during job initialization, before any step runs, so a login step cannot authenticate the pull. By checking the action out into the workspace first and referencing it locally, its image is built at the point the scan step runs - after the login step has written credentials to the runner's Docker config - so the base image pull is authenticated. For a `repository` scan the vendored directory is excluded from the scan via `skip_files` so it does not count towards vulnerability thresholds.
 
 ## Permissions
 

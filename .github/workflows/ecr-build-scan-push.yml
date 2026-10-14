@@ -67,6 +67,10 @@ jobs:
           role-to-assume: ${{ secrets.aws-role }}
           aws-region: ${{ inputs.aws-region }}
 
+      - name: Login to Amazon ECR Public
+        shell: bash
+        run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+
       - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
@@ -76,8 +80,16 @@ jobs:
           tags: app:${{ inputs.image-tag }}
           load: true
 
+      - name: Checkout Inspector scan action
+        uses: actions/checkout@v4
+        with:
+          repository: aws-actions/vulnerability-scan-github-action-for-amazon-inspector
+          ref: v1.5.0
+          path: .inspector-action
+          persist-credentials: false
+
       - name: Scan container image with Inspector
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1.5.0
+        uses: ./.inspector-action
         id: inspector
         with:
           artifact_type: 'container'
@@ -88,6 +100,11 @@ jobs:
           medium_threshold: 0
           low_threshold: 0
           other_threshold: 0
+
+      - name: Remove Inspector scan action source
+        if: always()
+        shell: bash
+        run: rm -rf .inspector-action
 
       - name: Vulnerability scan results
         run: cat ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
