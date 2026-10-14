@@ -626,7 +626,7 @@ permissions:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v13
   with:
     ecr-repository: workload-artefact-store
     image-tag: ${{ github.event.release.tag_name }}
@@ -638,7 +638,7 @@ build-scan-push:
 
 ```yaml
 build-scan-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v13
   with:
     dockerfile: docker/Dockerfile.production
     build-context: ./app
@@ -660,7 +660,7 @@ on:
 
 jobs:
   build-dev:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v13
     with:
       ecr-repository: my-app-dev
       image-tag: ${{ github.event.release.tag_name }}
@@ -668,7 +668,7 @@ jobs:
       aws-role: ${{ secrets.SFOE_WORKLOAD_PIPELINE_ROLE_DEV }}
 
   build-prod:
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v12
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/ecr-build-scan-push.yml@v13
     with:
       ecr-repository: my-app-prod
       image-tag: ${{ github.event.release.tag_name }}
@@ -804,7 +804,7 @@ permissions:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v13
   with:
     artifact-name: my-application
     artifact-type: .zip
@@ -819,7 +819,7 @@ scan-and-push:
 
 ```yaml
 scan-and-push:
-  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
+  uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v13
   with:
     artifact-name: my-application
     artifact-type: .tar.gz
@@ -861,7 +861,7 @@ jobs:
 
   scan-and-push:
     needs: build
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v13
     with:
       artifact-name: my-app
       tag-name: ${{ github.event.release.tag_name }}
@@ -901,7 +901,7 @@ jobs:
 
   scan-and-push:
     needs: build
-    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v12
+    uses: SFOE-prometheon/github-terraform-workflows/.github/workflows/s3-artifact-scan-push.yml@v13
     with:
       artifact-name: my-frontend
       artifact-type: .zip
